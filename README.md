@@ -1,60 +1,62 @@
-# Speed Jong Timer Beta
+# Speed Jong Timer
 
-A multi-directional countdown timer designed for Speed Jong (Mahjong) games, optimized for 4-player table setups with visual and audio feedback.
+A minimalist countdown timer designed for Speed Jong (Mahjong) games with clean visual feedback and animated effects.
 
 ## Features
 
 ### Timer & Display
-- ⏱️ **Configurable countdown timer** (3-15 seconds)
-- 🔢 **Four-directional number display** - Numbers positioned at top, bottom, left, and right, each rotated to face outward for easy viewing from any seat
-- 📦 **Fixed-size boxes** around numbers to prevent layout shifts
-- 🧭 **East Wind indicator (東)** - Traditional Chinese character above bottom box to indicate East player position
-- 🎯 **Giant centered zero** when timer expires
-- 🌈 **Dynamic color transitions** from green → yellow → orange → red as time runs out
+- ⏱️ **Configurable countdown timer** (3-10 seconds, with "hard mode" 3-second option)
+- 🎯 **Large centered timer** with smooth countdown
+- 🥧 **Full-screen pie wipe animation** - White circle depletes clockwise as time runs out
+- 🌈 **Dynamic color transitions** from green → yellow → orange → red (aggressive curve for urgency)
+- 💾 **Settings persistence** - Timer duration and sound preferences saved locally
 
 ### Visual Feedback
-- ⚡ **Double white flash** on tap for instant visual confirmation
-- 🔴 **Flashing red background** when timer hits zero
-- 📱 **Responsive design** optimized for desktop, tablet, and mobile (iPhone 14+)
+- ⚡ **Pikachu tap animation** - Happy Pikachu appears at tap location, oriented towards center
+- 🐟 **Magikarp timeout animation** - Appears when timer hits zero
+- 🔴 **Flashing red background** when timer expires
+- 📱 **Responsive design** optimized for desktop, tablet, and mobile
 
 ### Audio
-- 🔊 **Optional countdown sounds** with lower, pleasant tones
-- 🎵 **Reset confirmation beep** (two-tone chime)
-- ⚠️ **Timeout alert sound** (descending buzz)
-- 🔇 All sounds respect the enable/disable setting
+- 🔊 **Optional tick sounds** (disabled by default) - Plays every second
+- 🎵 **Reset confirmation beep** - Two-tone chime when starting/resetting timer
+- ⚠️ **Timeout alert sound** - Descending buzz when time expires
+- 🔇 Individual toggles for tick, reset, and timeout sounds
+- 🎹 All sounds generated using Web Audio API (8-bit retro style)
 
 ### Interaction
 - 👆 **Tap anywhere** to reset timer during countdown
+- 🚀 **Ready state** - START GAME button leads to 0.0 ready screen, then tap to begin
 - 🚫 **250ms tap debounce** to prevent accidental double-taps
 - 📱 **Wake lock** keeps screen active during gameplay
-- 🔄 **On-screen instructions** appear when timer expires
+- 🔄 **On-screen instructions** appear in different game states
 
 ## How to Play
 
 ### Initial Setup
 1. Open `index.html` in a web browser
 2. Configure your preferred timer duration (default: 5 seconds)
-3. Toggle sound on/off as desired (default: on)
-4. Click "START GAME"
-5. **Position the device** - Place it in the center of the table with the 東 (East) character facing the East Wind player
+3. Toggle sounds on/off individually (tick sound off by default)
+4. Enable "Do Not Disturb" mode on your phone
+5. Click "READY"
 
 ### During Game
-1. **Countdown begins** - Four numbers appear at edges, facing outward
-   - 東 character visible above bottom number
-2. **Screen color changes** gradually as time runs out (green → yellow → orange → red)
-3. **Tap anywhere** to reset the timer back to starting value
-   - You'll see a quick double white flash
+1. **Ready state** - Screen shows "North taps anywhere to start when East is ready!"
+2. **Tap to start** - Countdown begins with pie wipe animation
+3. **Screen color changes** gradually as time runs out (green → red)
+4. **Tap anywhere** to reset the timer back to starting value
+   - Pikachu animation appears at tap location
    - Reset sound plays (if enabled)
-4. **Timer reaches 0:**
-   - Giant "0" appears in center
+5. **Timer reaches 0.0:**
+   - Magikarp animation appears
    - Background flashes red continuously
-   - Instructions appear: "Tap to reset timer. Reload page to change settings."
-5. **Tap to restart** the countdown
+   - Instructions appear: "Tap anywhere to reset timer. Reload to change settings."
+6. **Tap to restart** the countdown
 
 ### Changing Settings
 - Reload the page to access the settings screen
-- Adjust timer duration (3-15 seconds)
-- Enable/disable sound
+- Adjust timer duration (3-10 seconds)
+- Toggle tick, reset, and timeout sounds individually
 
 ## Running the App
 
@@ -77,53 +79,66 @@ php -S localhost:8000
 
 Then visit `http://localhost:8000` in your browser.
 
+### Option 3: PWA (Progressive Web App)
+For true fullscreen experience on mobile:
+1. Open the app in Safari (iOS) or Chrome (Android)
+2. Tap "Share" → "Add to Home Screen"
+3. Launch from home screen for fullscreen mode without browser UI
+
 ## Technical Details
 
-### Display Layout
-- **Desktop:** 450px × 300px number boxes with 20rem font size
-- **Tablet (≤768px):** 350px × 240px boxes with 15rem font size
-- **Mobile (≤480px):** 160px × 120px boxes with 7rem font size
-- **Small phones (≤380px):** 140px × 100px boxes with 5rem font size
-- **Timeout display:** 70vmin font size for giant centered zero
+### Display
+- **Timer text:** 20vmin font size (responsive)
+- **Pie wipe:** Full-screen SVG animation with 500-unit radius
+- **Centered layout** with text using `mix-blend-mode: difference` for visibility
+- **Retro font:** Press Start 2P (local, no external requests)
 
-### Audio Frequencies (Lower Tones)
-- **Tick sound:** A4 (440 Hz)
-- **Reset chime:** G4 (392 Hz) → C5 (523 Hz)
-- **Timeout buzz:** A3 (220 Hz) → F#3 (185 Hz) descending
+### Audio Frequencies (8-bit Style)
+- **Tick sound:** 800 Hz square wave, 50ms duration
+- **Reset chime:** 600 Hz → 800 Hz, 100ms duration
+- **Timeout buzz:** 400 Hz → 200 Hz descending, 500ms duration
 
 ### Browser Compatibility
 - Wake Lock API requires HTTPS or localhost
 - Works best on Chrome, Edge, and Safari (iOS 16.4+)
 - Touch events optimized for mobile devices
-- Backdrop blur and visual effects may vary by browser
+- All resources loaded locally (no network dependencies)
 
 ## Technologies Used
 
 - **HTML5** - Semantic markup
-- **CSS3** - Responsive design, animations, backdrop filters
+- **CSS3** - Responsive design, animations, SVG styling
 - **Vanilla JavaScript** - No frameworks or dependencies
 - **Web Audio API** - Real-time sound generation
 - **Wake Lock API** - Screen management
+- **LocalStorage API** - Settings persistence
+- **SVG** - Full-screen pie wipe animation
 
 ## File Structure
 
 ```
 spped_jong/
-├── index.html          # Main HTML structure
-├── style.css           # All styles and animations
-├── script.js           # Game logic and audio
-└── README.md          # This file
+├── index.html              # Main HTML structure
+├── style.css               # All styles and animations
+├── script.js               # Game logic, audio, and state management
+├── manifest.json           # PWA configuration
+├── favicon.jpg             # Site icon
+├── mahjong.gif             # Home screen animation
+├── magikarp.gif            # Timeout animation
+├── pickachu_happy.gif      # Tap feedback animation
+├── fonts/
+│   └── PressStart2P-Regular.ttf  # Retro font (local)
+└── README.md               # This file
 ```
 
 ## Browser Support
 
 - ✅ Chrome/Edge 84+
 - ✅ Safari 16.4+ (iOS/macOS)
-- ✅ Firefox (wake lock not supported)
+- ✅ Firefox (wake lock not supported, but app works)
 - ⚠️ Older browsers may not support all visual effects
 
 ---
 
-**Version:** Beta  
-**Optimized for:** 4-player Speed Jong (Mahjong) games  
-**Best Experience:** iPad/tablet placed in center of table
+**Optimized for:** 2-4 player Speed Jong (Mahjong) games  
+**Best Experience:** Mobile device in "Do Not Disturb" mode, added to home screen as PWA

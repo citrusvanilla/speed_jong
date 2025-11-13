@@ -68,7 +68,6 @@ h1 {
     text-align: center;
     color: #333;
     line-height: 1.5;
-    white-space: nowrap;
 }
 
 .config-group {
@@ -267,6 +266,43 @@ h1 {
 
 .tap-hint.visible {
     opacity: 0.8;
+}
+
+.timeout-gif {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, calc(-50% - 15vmin));
+    width: 100px;
+    height: 100px;
+    opacity: 0;
+    z-index: 100;
+    transition: opacity 0.3s ease;
+    image-rendering: pixelated;
+}
+
+.timeout-gif.visible {
+    opacity: 1;
+}
+
+.tap-gif {
+    position: fixed;
+    width: 125px;
+    height: 125px;
+    pointer-events: none;
+    z-index: 30;
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(0deg);
+}
+
+.tap-gif.visible {
+    opacity: 1;
+    transition: none;
+}
+
+.tap-gif.fade-out {
+    opacity: 0;
+    transition: opacity 0.3s ease;
 }
 
 .settings-hint {

@@ -59,12 +59,14 @@ const gameScreen = document.getElementById('gameScreen');
 const progressPie = document.getElementById('progressPie');
 const timerText = document.getElementById('timerText');
 const tapHint = document.getElementById('tapHint');
+const timeoutGif = document.getElementById('timeoutGif');
 const settingsHint = document.querySelector('.settings-hint');
 const startButton = document.getElementById('startButton');
 const timerDurationInput = document.getElementById('timerDuration');
 const tickSoundInput = document.getElementById('tickSoundEnabled');
 const resetSoundInput = document.getElementById('resetSoundEnabled');
 const timeoutSoundInput = document.getElementById('timeoutSoundEnabled');
+const tapGif = document.getElementById('tapGif');
 
 // SVG pie chart helper function (full-screen wipe)
 function getPiePath(percentage) {
@@ -92,6 +94,34 @@ function getPiePath(percentage) {
     
     // Create pie path: move to center, line to start (top), arc to end, line back to center
     return `M ${cx},${cy} L ${cx},${cy - radius} A ${radius},${radius} 0 ${largeArc},1 ${endX},${endY} Z`;
+}
+
+// Show tap gif at touch location
+function showTapGif(x, y) {
+    tapGif.style.left = `${x}px`;
+    tapGif.style.top = `${y}px`;
+    
+    // Calculate angle pointing towards center of screen
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    const angleToCenter = Math.atan2(centerY - y, centerX - x) * 180 / Math.PI;
+    
+    // Rotate to point towards center (add 90 to adjust for image orientation)
+    tapGif.style.transform = `translate(-50%, -50%) rotate(${angleToCenter + 90}deg)`;
+    
+    // Restart gif from frame 1 by reloading the image
+    const src = tapGif.src;
+    tapGif.src = '';
+    tapGif.src = src + '?' + Date.now();
+    
+    tapGif.classList.remove('fade-out');
+    tapGif.classList.add('visible');
+    
+    // Fade out after 750ms
+    setTimeout(() => {
+        tapGif.classList.remove('visible');
+        tapGif.classList.add('fade-out');
+    }, 750);
 }
 
 // Sound generation functions
@@ -321,12 +351,14 @@ function updateDisplay() {
         // Ready state - show "tap to start"
         timerText.style.opacity = '0';
         tapHint.classList.remove('visible');
+        timeoutGif.classList.remove('visible');
         settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>iPhone users can rotate<br>the phone in landscape mode<br>and remove all other tabs for<br>maximum tap real estate.<br><br>Sound not working?<br>Turn off Silent Mode<br>and reload page.';
         settingsHint.classList.add('visible');
     } else if (currentTime <= 0) {
-        // Timer finished - show reset/settings hint
+        // Timer finished - show magikarp and reset/settings hint
         timerText.style.opacity = '0';
         tapHint.classList.remove('visible');
+        timeoutGif.classList.add('visible');
         settingsHint.innerHTML = 'Tap anywhere to reset timer.<br>Reload to change settings.';
         settingsHint.classList.add('visible');
     } else {
@@ -334,6 +366,7 @@ function updateDisplay() {
         timerText.style.opacity = '1';
         timerText.textContent = displayTime;
         tapHint.classList.add('visible');
+        timeoutGif.classList.remove('visible');
         settingsHint.classList.remove('visible');
     }
     
@@ -379,6 +412,10 @@ gameScreen.addEventListener('click', (e) => {
     const now = Date.now();
     if (now - lastTapTime >= TAP_DEBOUNCE_MS) {
         lastTapTime = now;
+        
+        // Show tap gif at click location
+        showTapGif(e.clientX, e.clientY);
+        
         if (isReady) {
             // First tap after START GAME - begin countdown
             isReady = false;
@@ -396,6 +433,12 @@ gameScreen.addEventListener('touchstart', (e) => {
     const now = Date.now();
     if (now - lastTapTime >= TAP_DEBOUNCE_MS) {
         lastTapTime = now;
+        
+        // Show tap gif at touch location
+        if (e.touches && e.touches.length > 0) {
+            showTapGif(e.touches[0].clientX, e.touches[0].clientY);
+        }
+        
         if (isReady) {
             // First tap after START GAME - begin countdown
             isReady = false;
