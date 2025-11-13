@@ -20,16 +20,40 @@ const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 // DOM elements
 const startScreen = document.getElementById('startScreen');
 const gameScreen = document.getElementById('gameScreen');
-const progressCircle = document.getElementById('progressCircle');
+const progressPie = document.getElementById('progressPie');
 const timerText = document.getElementById('timerText');
 const settingsHint = document.querySelector('.settings-hint');
 const startButton = document.getElementById('startButton');
 const timerDurationInput = document.getElementById('timerDuration');
 const soundEnabledInput = document.getElementById('soundEnabled');
 
-// SVG circle properties
-const radius = 90;
-const circumference = 2 * Math.PI * radius;
+// SVG pie chart helper function (full-screen wipe)
+function getPiePath(percentage) {
+    // percentage is 0-1, where 1 is full circle, 0 is empty
+    // Using viewBox -50,-50,100,100 with center at 0,0 (screen center)
+    const cx = 0;
+    const cy = 0;
+    const radius = 500; // Massive radius to cover tall mobile aspect ratios (16:9, 19.5:9, etc.)
+    
+    if (percentage <= 0) return '';
+    if (percentage >= 1) {
+        // Full circle - covers entire screen
+        return `M ${cx},${cy} m 0,-${radius} a ${radius},${radius} 0 1,1 0,${radius * 2} a ${radius},${radius} 0 1,1 0,-${radius * 2}`;
+    }
+    
+    // Calculate the angle (starts from top, goes clockwise)
+    const angle = percentage * 2 * Math.PI;
+    
+    // Calculate end point of the arc
+    const endX = cx + radius * Math.sin(angle);
+    const endY = cy - radius * Math.cos(angle);
+    
+    // Large arc flag: 1 if angle > 180 degrees
+    const largeArc = angle > Math.PI ? 1 : 0;
+    
+    // Create pie path: move to center, line to start (top), arc to end, line back to center
+    return `M ${cx},${cy} L ${cx},${cy - radius} A ${radius},${radius} 0 ${largeArc},1 ${endX},${endY} Z`;
+}
 
 // Sound generation functions
 function playTick() {
@@ -224,16 +248,19 @@ function updateScreenColor() {
     // Progress from 0 (just started) to 1 (almost done)
     const progress = 1 - (currentTime / timerDuration);
     
+    // Use exponential curve for more aggressive color change near the end
+    const colorProgress = Math.pow(progress, 0.6); // Makes it transition to red much faster
+    
     // HSL color transition:
-    // Green (120°) → Yellow (60°) → Orange (30°) → Red-Orange (15°)
+    // Green (120°) → Yellow (60°) → Orange (30°) → Red (0°)
     // As time runs out, hue decreases toward warmer colors
-    const hue = 120 - (progress * 105); // 120° to 15°
+    const hue = 120 - (colorProgress * 120); // 120° to 0° (pure red)
     
     // Increase saturation as time runs out for more intensity
-    const saturation = 65 + (progress * 35); // 65% to 100%
+    const saturation = 65 + (colorProgress * 35); // 65% to 100%
     
     // Slightly decrease lightness for more dramatic effect
-    const lightness = 60 - (progress * 10); // 60% to 50%
+    const lightness = 60 - (colorProgress * 10); // 60% to 50%
     
     gameScreen.style.backgroundColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 }
@@ -248,23 +275,21 @@ function handleTimeout() {
 function updateDisplay() {
     const displayTime = currentTime.toFixed(1);
     
-    // Display time as text in center
-    timerText.textContent = displayTime;
+    // Hide timer text when it hits 0.0
+    if (currentTime <= 0) {
+        timerText.style.opacity = '0';
+        settingsHint.classList.add('visible');
+    } else {
+        timerText.style.opacity = '1';
+        timerText.textContent = displayTime;
+        settingsHint.classList.remove('visible');
+    }
     
     // Calculate progress (percentage of time remaining)
     const progress = Math.max(0, currentTime / timerDuration);
     
-    // Update circle: starts full, decreases to nothing (like Pac-Man eating it)
-    const offset = circumference * (1 - progress);
-    progressCircle.style.strokeDasharray = circumference;
-    progressCircle.style.strokeDashoffset = offset;
-    
-    // Show instructions when timer hits 0
-    if (currentTime <= 0) {
-        settingsHint.classList.add('visible');
-    } else {
-        settingsHint.classList.remove('visible');
-    }
+    // Update pie chart: starts full, wipes away to nothing
+    progressPie.setAttribute('d', getPiePath(progress));
 }
 
 // Event listeners

@@ -46,9 +46,8 @@
     <!-- Game Screen -->
     <div id="gameScreen" class="screen hidden">
         <div class="timer-container">
-            <svg class="countdown-circle" viewBox="0 0 200 200">
-                <circle class="countdown-circle-bg" cx="100" cy="100" r="90"></circle>
-                <circle class="countdown-circle-progress" id="progressCircle" cx="100" cy="100" r="90"></circle>
+            <svg class="countdown-circle" id="countdownSvg" viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid slice">
+                <path class="countdown-pie" id="progressPie" d=""></path>
             </svg>
             <div class="timer-text" id="timerText"></div>
         </div>
