@@ -94,6 +94,18 @@ h1 {
     user-select: none;
 }
 
+.note {
+    background: #fef3c7;
+    border: 2px solid #f59e0b;
+    border-radius: 10px;
+    padding: 0.75rem;
+    margin-top: 1rem;
+    text-align: center;
+    font-size: 1rem;
+    color: #92400e;
+    font-weight: 600;
+}
+
 .start-btn {
     width: 100%;
     padding: 1rem;

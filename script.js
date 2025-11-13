@@ -312,12 +312,6 @@ startButton.addEventListener('click', async () => {
     startScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
     
-    // Attempt to hide address bar on mobile by scrolling
-    setTimeout(() => {
-        window.scrollTo(0, 1);
-        window.scrollTo(0, 0);
-    }, 100);
-    
     // Start the game
     startTimer();
 });
