@@ -10,6 +10,7 @@ let currentTime = 5.00;
 let timerInterval = null;
 let wakeLock = null;
 let isTimeout = false;
+let isReady = false; // True when on game screen but not started
 let lastTapTime = 0;
 let lastTickSecond = 5;
 const TAP_DEBOUNCE_MS = 250;
@@ -189,6 +190,7 @@ function startTimer() {
     currentTime = timerDuration;
     lastTickSecond = Math.floor(timerDuration);
     isTimeout = false;
+    isReady = false;
     gameScreen.classList.remove('timeout');
     updateDisplay();
     updateScreenColor();
@@ -230,6 +232,7 @@ function resetTimer() {
     gameScreen.classList.add('flash');
     
     // Always play reset sound and restart timer
+    isReady = false;
     playReset();
     startTimer();
     
@@ -275,11 +278,19 @@ function handleTimeout() {
 function updateDisplay() {
     const displayTime = currentTime.toFixed(1);
     
-    // Hide timer text when it hits 0.0
-    if (currentTime <= 0) {
+    // Update hint text based on state
+    if (isReady) {
+        // Ready state - show "tap to start"
         timerText.style.opacity = '0';
+        settingsHint.textContent = 'Tap to start timer.';
+        settingsHint.classList.add('visible');
+    } else if (currentTime <= 0) {
+        // Timer finished - show reset/settings hint
+        timerText.style.opacity = '0';
+        settingsHint.innerHTML = 'Tap to reset timer.<br>Reload page to change settings.';
         settingsHint.classList.add('visible');
     } else {
+        // Timer running - show time
         timerText.style.opacity = '1';
         timerText.textContent = displayTime;
         settingsHint.classList.remove('visible');
@@ -308,12 +319,13 @@ startButton.addEventListener('click', async () => {
     // Request wake lock
     await requestWakeLock();
     
-    // Switch to game screen
+    // Switch to game screen in ready state (showing 0.0)
     startScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
-    
-    // Start the game
-    startTimer();
+    isReady = true;
+    currentTime = 0;
+    gameScreen.style.backgroundColor = '#4ade80'; // Green
+    updateDisplay();
 });
 
 gameScreen.addEventListener('click', (e) => {
@@ -321,7 +333,15 @@ gameScreen.addEventListener('click', (e) => {
     const now = Date.now();
     if (now - lastTapTime >= TAP_DEBOUNCE_MS) {
         lastTapTime = now;
-        resetTimer();
+        if (isReady) {
+            // First tap after START GAME - begin countdown
+            isReady = false;
+            playReset(); // Play sound when starting
+            startTimer();
+        } else {
+            // Already running - reset timer
+            resetTimer();
+        }
     }
 });
 
@@ -330,7 +350,15 @@ gameScreen.addEventListener('touchstart', (e) => {
     const now = Date.now();
     if (now - lastTapTime >= TAP_DEBOUNCE_MS) {
         lastTapTime = now;
-        resetTimer();
+        if (isReady) {
+            // First tap after START GAME - begin countdown
+            isReady = false;
+            playReset(); // Play sound when starting
+            startTimer();
+        } else {
+            // Already running - reset timer
+            resetTimer();
+        }
     }
 }, { passive: false });
 
