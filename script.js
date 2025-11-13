@@ -5,7 +5,7 @@
 
 // Game state
 let timerDuration = 5;
-let tickSoundEnabled = true;
+let tickSoundEnabled = false;
 let resetSoundEnabled = true;
 let timeoutSoundEnabled = true;
 let currentTime = 5.00;
@@ -321,7 +321,7 @@ function updateDisplay() {
         // Ready state - show "tap to start"
         timerText.style.opacity = '0';
         tapHint.classList.remove('visible');
-        settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!';
+        settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>iPhone users can rotate<br>the phone in landscape mode<br>and remove all other tabs for<br>maximum tap real estate.<br><br>Sound not working?<br>Turn off Silent Mode<br>and reload page.';
         settingsHint.classList.add('visible');
     } else if (currentTime <= 0) {
         // Timer finished - show reset/settings hint

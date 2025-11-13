@@ -54,8 +54,6 @@ body {
     height: auto;
     display: block;
     margin: 0 auto 1.5rem;
-    border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
 h1 {
