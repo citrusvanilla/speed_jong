@@ -3,6 +3,9 @@
  * Styles for multi-directional countdown timer
  */
 
+/* Import Digital-7 font for classic seven-segment display look */
+@import url('https://fonts.cdnfonts.com/css/digital-7-mono');
+
 * {
     margin: 0;
     padding: 0;
@@ -184,8 +187,9 @@ h1 {
 
 .timer-number {
     position: absolute;
-    font-size: 20rem;
-    font-weight: bold;
+    font-size: 22rem;
+    font-weight: normal;
+    font-family: 'Digital-7 Mono', 'Courier New', monospace;
     color: white;
     text-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
     line-height: 1;
@@ -197,9 +201,9 @@ h1 {
     backdrop-filter: blur(10px);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
     
-    /* Fixed dimensions */
-    width: 450px;
-    height: 300px;
+    /* Fixed dimensions - sized for up to 99.9 */
+    width: 600px;
+    height: 350px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -207,33 +211,34 @@ h1 {
 
 /* Four directions for four players - facing outward */
 .timer-number:nth-child(1) {
-    top: 10%;
+    top: max(10%, env(safe-area-inset-top));
     left: 50%;
     transform: translate(-50%, 0) rotate(180deg);
 }
 
 .timer-number:nth-child(2) {
     top: 50%;
-    right: 10%;
+    right: max(10%, env(safe-area-inset-right));
     transform: translate(0, -50%) rotate(-90deg);
 }
 
 .timer-number:nth-child(3) {
-    bottom: 10%;
+    bottom: max(10%, env(safe-area-inset-bottom));
     left: 50%;
     transform: translate(-50%, 0) rotate(0deg);
 }
 
 .timer-number:nth-child(4) {
     top: 50%;
-    left: 10%;
+    left: max(10%, env(safe-area-inset-left));
     transform: translate(0, -50%) rotate(90deg);
 }
 
 /* Big centered zero when timer hits 0 */
 .timer-zero {
     font-size: 70vmin;
-    font-weight: bold;
+    font-weight: normal;
+    font-family: 'Digital-7 Mono', 'Courier New', monospace;
     color: white;
     text-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     line-height: 1;
@@ -242,7 +247,7 @@ h1 {
 /* East Wind indicator above bottom box */
 .east-indicator {
     position: fixed;
-    bottom: 23%;
+    bottom: calc(10% + 370px + env(safe-area-inset-bottom));
     left: 50%;
     transform: translateX(-50%);
     font-size: 3rem;
@@ -256,7 +261,7 @@ h1 {
 
 .settings-hint {
     position: fixed;
-    bottom: 3rem;
+    bottom: calc(3rem + env(safe-area-inset-bottom));
     left: 50%;
     transform: translateX(-50%);
     font-size: 1.2rem;
@@ -277,9 +282,14 @@ h1 {
 /* Responsive */
 @media (max-width: 768px) {
     .timer-number {
-        font-size: 15rem;
-        width: 350px;
-        height: 240px;
+        font-size: 17rem;
+        width: 480px;
+        height: 280px;
+    }
+    
+    .east-indicator {
+        font-size: 2.5rem;
+        bottom: calc(10% + 300px + env(safe-area-inset-bottom));
     }
     
     h1 {
@@ -294,58 +304,58 @@ h1 {
 @media (max-width: 480px) {
     .timer-number {
         font-size: 7rem;
-        width: 160px;
-        height: 120px;
+        width: 220px;
+        height: 140px;
     }
     
     .timer-number:nth-child(1) {
-        top: 3%;
+        top: max(3%, env(safe-area-inset-top));
     }
     
     .timer-number:nth-child(2) {
-        right: 3%;
+        right: max(3%, env(safe-area-inset-right));
     }
     
     .timer-number:nth-child(3) {
-        bottom: 3%;
+        bottom: max(8%, calc(3% + env(safe-area-inset-bottom)));
     }
     
     .timer-number:nth-child(4) {
-        left: 3%;
+        left: max(3%, env(safe-area-inset-left));
     }
     
     .east-indicator {
         font-size: 2rem;
-        bottom: 18%;
+        bottom: calc(8% + 160px + env(safe-area-inset-bottom));
     }
 }
 
 @media (max-width: 380px) {
     .timer-number {
         font-size: 5rem;
-        width: 140px;
-        height: 100px;
+        width: 200px;
+        height: 120px;
     }
     
     .timer-number:nth-child(1) {
-        top: 2%;
+        top: max(2%, env(safe-area-inset-top));
     }
     
     .timer-number:nth-child(2) {
-        right: 2%;
+        right: max(2%, env(safe-area-inset-right));
     }
     
     .timer-number:nth-child(3) {
-        bottom: 2%;
+        bottom: max(8%, calc(2% + env(safe-area-inset-bottom)));
     }
     
     .timer-number:nth-child(4) {
-        left: 2%;
+        left: max(2%, env(safe-area-inset-left));
     }
     
     .east-indicator {
         font-size: 1.5rem;
-        bottom: 15%;
+        bottom: calc(8% + 140px + env(safe-area-inset-bottom));
     }
 }
 

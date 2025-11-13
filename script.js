@@ -6,11 +6,12 @@
 // Game state
 let timerDuration = 5;
 let soundEnabled = true;
-let currentTime = 5;
+let currentTime = 5.00;
 let timerInterval = null;
 let wakeLock = null;
 let isTimeout = false;
 let lastTapTime = 0;
+let lastTickSecond = 5;
 const TAP_DEBOUNCE_MS = 250;
 
 // Audio context for sound generation
@@ -158,6 +159,7 @@ async function releaseWakeLock() {
 // Timer functions
 function startTimer() {
     currentTime = timerDuration;
+    lastTickSecond = Math.floor(timerDuration);
     isTimeout = false;
     gameScreen.classList.remove('timeout');
     updateDisplay();
@@ -168,17 +170,28 @@ function startTimer() {
     }
     
     timerInterval = setInterval(() => {
-        currentTime--;
+        currentTime -= 0.1;
+        
+        // Ensure we don't go below 0
+        if (currentTime < 0) {
+            currentTime = 0;
+        }
+        
         updateDisplay();
         updateScreenColor();
         
-        if (currentTime > 0) {
+        // Play tick sound only when crossing a whole second boundary
+        const currentSecond = Math.floor(currentTime);
+        if (currentSecond < lastTickSecond && currentTime > 0) {
             playTick();
-        } else {
+            lastTickSecond = currentSecond;
+        }
+        
+        if (currentTime <= 0) {
             clearInterval(timerInterval);
             handleTimeout();
         }
-    }, 1000);
+    }, 100); // Update every 100ms (tenths of a second)
 }
 
 function resetTimer() {
@@ -229,19 +242,21 @@ function handleTimeout() {
 }
 
 function updateDisplay() {
-    if (currentTime === 0) {
+    const displayTime = currentTime.toFixed(1);
+    
+    if (currentTime <= 0) {
         // Show one big centered 0
-        timerDisplay.innerHTML = `<span class="timer-zero">${currentTime}</span>`;
+        timerDisplay.innerHTML = `<span class="timer-zero">${displayTime}</span>`;
         // Show settings hint, hide east indicator
         settingsHint.classList.add('visible');
         eastIndicator.style.display = 'none';
     } else {
         // Create four numbers, one for each player direction
         timerDisplay.innerHTML = `
-            <span class="timer-number">${currentTime}</span>
-            <span class="timer-number">${currentTime}</span>
-            <span class="timer-number">${currentTime}</span>
-            <span class="timer-number">${currentTime}</span>
+            <span class="timer-number">${displayTime}</span>
+            <span class="timer-number">${displayTime}</span>
+            <span class="timer-number">${displayTime}</span>
+            <span class="timer-number">${displayTime}</span>
         `;
         // Hide settings hint, show east indicator
         settingsHint.classList.remove('visible');
