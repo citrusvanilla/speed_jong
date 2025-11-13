@@ -22,7 +22,6 @@ const startScreen = document.getElementById('startScreen');
 const gameScreen = document.getElementById('gameScreen');
 const timerDisplay = document.getElementById('timerDisplay');
 const settingsHint = document.querySelector('.settings-hint');
-const eastIndicator = document.querySelector('.east-indicator');
 const startButton = document.getElementById('startButton');
 const timerDurationInput = document.getElementById('timerDuration');
 const soundEnabledInput = document.getElementById('soundEnabled');
@@ -244,23 +243,17 @@ function handleTimeout() {
 function updateDisplay() {
     const displayTime = currentTime.toFixed(1);
     
+    // Always show two numbers, one for top and one for bottom
+    timerDisplay.innerHTML = `
+        <span class="timer-number">${displayTime}</span>
+        <span class="timer-number">${displayTime}</span>
+    `;
+    
+    // Show instructions when timer hits 0
     if (currentTime <= 0) {
-        // Show one big centered 0
-        timerDisplay.innerHTML = `<span class="timer-zero">${displayTime}</span>`;
-        // Show settings hint, hide east indicator
         settingsHint.classList.add('visible');
-        eastIndicator.style.display = 'none';
     } else {
-        // Create four numbers, one for each player direction
-        timerDisplay.innerHTML = `
-            <span class="timer-number">${displayTime}</span>
-            <span class="timer-number">${displayTime}</span>
-            <span class="timer-number">${displayTime}</span>
-            <span class="timer-number">${displayTime}</span>
-        `;
-        // Hide settings hint, show east indicator
         settingsHint.classList.remove('visible');
-        eastIndicator.style.display = 'block';
     }
 }
 
