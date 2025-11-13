@@ -45,7 +45,13 @@
     
     <!-- Game Screen -->
     <div id="gameScreen" class="screen hidden">
-        <div class="timer-circle" id="timerCircle"></div>
+        <div class="timer-container">
+            <svg class="countdown-circle" viewBox="0 0 200 200">
+                <circle class="countdown-circle-bg" cx="100" cy="100" r="90"></circle>
+                <circle class="countdown-circle-progress" id="progressCircle" cx="100" cy="100" r="90"></circle>
+            </svg>
+            <div class="timer-text" id="timerText"></div>
+        </div>
         <div class="settings-hint">Tap to reset timer.<br>Reload page to change settings.</div>
     </div>
     

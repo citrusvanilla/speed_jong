@@ -20,11 +20,16 @@ const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 // DOM elements
 const startScreen = document.getElementById('startScreen');
 const gameScreen = document.getElementById('gameScreen');
-const timerCircle = document.getElementById('timerCircle');
+const progressCircle = document.getElementById('progressCircle');
+const timerText = document.getElementById('timerText');
 const settingsHint = document.querySelector('.settings-hint');
 const startButton = document.getElementById('startButton');
 const timerDurationInput = document.getElementById('timerDuration');
 const soundEnabledInput = document.getElementById('soundEnabled');
+
+// SVG circle properties
+const radius = 90;
+const circumference = 2 * Math.PI * radius;
 
 // Sound generation functions
 function playTick() {
@@ -243,8 +248,16 @@ function handleTimeout() {
 function updateDisplay() {
     const displayTime = currentTime.toFixed(1);
     
-    // Display time in the center circle
-    timerCircle.textContent = displayTime;
+    // Display time as text in center
+    timerText.textContent = displayTime;
+    
+    // Calculate progress (percentage of time remaining)
+    const progress = Math.max(0, currentTime / timerDuration);
+    
+    // Update circle: starts full, decreases to nothing (like Pac-Man eating it)
+    const offset = circumference * (1 - progress);
+    progressCircle.style.strokeDasharray = circumference;
+    progressCircle.style.strokeDashoffset = offset;
     
     // Show instructions when timer hits 0
     if (currentTime <= 0) {

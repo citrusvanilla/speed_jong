@@ -176,43 +176,47 @@ h1 {
     }
 }
 
-.timer-circle {
+.timer-container {
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    
-    /* Giant circle dimensions */
     width: 90vmin;
     height: 90vmin;
-    border-radius: 50%;
-    
-    /* Radial gradient from center to edges - fades to nothing */
-    background: radial-gradient(circle at center, 
-        rgba(255, 255, 255, 0.25) 0%, 
-        rgba(255, 255, 255, 0.15) 40%, 
-        rgba(255, 255, 255, 0.05) 70%,
-        rgba(255, 255, 255, 0) 100%);
-    
-    /* Border with fade effect */
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 
-        0 0 40px rgba(255, 255, 255, 0.2),
-        inset 0 0 60px rgba(255, 255, 255, 0.1);
-    
-    /* Text styling */
+}
+
+.countdown-circle {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg); /* Start from top */
+}
+
+.countdown-circle-bg {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.1);
+    stroke-width: 12;
+}
+
+.countdown-circle-progress {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.8);
+    stroke-width: 12;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.6));
+    transition: stroke-dashoffset 0.1s linear;
+}
+
+.timer-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     font-size: 25vmin;
     font-weight: normal;
     font-family: 'Digital-7 Mono', 'Courier New', monospace;
     color: white;
-    text-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
-    
-    /* Center the number */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    
-    backdrop-filter: blur(10px);
+    text-shadow: 0 0 30px rgba(255, 255, 255, 0.8);
+    pointer-events: none;
 }
 
 .settings-hint {
@@ -245,16 +249,19 @@ h1 {
         padding: 2rem;
     }
     
-    .timer-circle {
+    .timer-text {
         font-size: 22vmin;
     }
 }
 
 @media (max-width: 480px) {
-    .timer-circle {
-        font-size: 20vmin;
+    .timer-container {
         width: 85vmin;
         height: 85vmin;
+    }
+    
+    .timer-text {
+        font-size: 20vmin;
     }
 }
 
