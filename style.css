@@ -290,7 +290,7 @@ h1 {
     width: 125px;
     height: 125px;
     pointer-events: none;
-    z-index: 30;
+    z-index: 150;
     opacity: 0;
     transform: translate(-50%, -50%) rotate(0deg);
 }
