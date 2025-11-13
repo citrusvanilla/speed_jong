@@ -19,7 +19,7 @@
             <h1>Speed Jong Timer</h1>
 
             <div class="config-group">
-                <label for="timerDuration">Timer Duration (seconds):</label>
+                <label for="timerDuration">Timer Duration (sec):</label>
                 <select id="timerDuration">
                     <option value="3">3</option>
                     <option value="4">4</option>
@@ -38,17 +38,31 @@
             </div>
             
             <div class="config-group">
-                <label for="soundEnabled">
-                    <input type="checkbox" id="soundEnabled" checked>
-                    Enable sound
+                <label for="tickSoundEnabled">
+                    <input type="checkbox" id="tickSoundEnabled" checked>
+                    Tick sounds
+                </label>
+            </div>
+            
+            <div class="config-group">
+                <label for="resetSoundEnabled">
+                    <input type="checkbox" id="resetSoundEnabled" checked>
+                    Reset sound
+                </label>
+            </div>
+            
+            <div class="config-group">
+                <label for="timeoutSoundEnabled">
+                    <input type="checkbox" id="timeoutSoundEnabled" checked>
+                    Timeout sound
                 </label>
             </div>
             
             <div class="note">
-                Turn on "Do Not Disturb" mode!
+                Put phone on "Do Not Disturb" mode!
             </div>
             
-            <button id="startButton" class="start-btn">START GAME</button>
+            <button id="startButton" class="start-btn">READY</button>
         </div>
     </div>
     
@@ -60,7 +74,8 @@
             </svg>
             <div class="timer-text" id="timerText"></div>
         </div>
-        <div class="settings-hint">Tap to reset timer.<br>Reload page to change settings.</div>
+        <div class="tap-hint" id="tapHint">Tap anywhere to reset</div>
+        <div class="settings-hint">Tap anywhere to reset<br>Reload to change settings</div>
     </div>
     
     <script src="script.js"></script>

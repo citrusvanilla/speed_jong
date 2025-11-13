@@ -5,7 +5,9 @@
 
 // Game state
 let timerDuration = 5;
-let soundEnabled = true;
+let tickSoundEnabled = true;
+let resetSoundEnabled = true;
+let timeoutSoundEnabled = true;
 let currentTime = 5.00;
 let timerInterval = null;
 let wakeLock = null;
@@ -15,6 +17,39 @@ let lastTapTime = 0;
 let lastTickSecond = 5;
 const TAP_DEBOUNCE_MS = 250;
 
+// Load saved settings from localStorage
+function loadSettings() {
+    const savedDuration = localStorage.getItem('timerDuration');
+    const savedTickSound = localStorage.getItem('tickSoundEnabled');
+    const savedResetSound = localStorage.getItem('resetSoundEnabled');
+    const savedTimeoutSound = localStorage.getItem('timeoutSoundEnabled');
+    
+    if (savedDuration) {
+        timerDurationInput.value = savedDuration;
+        timerDuration = parseInt(savedDuration);
+    }
+    if (savedTickSound !== null) {
+        tickSoundInput.checked = savedTickSound === 'true';
+        tickSoundEnabled = savedTickSound === 'true';
+    }
+    if (savedResetSound !== null) {
+        resetSoundInput.checked = savedResetSound === 'true';
+        resetSoundEnabled = savedResetSound === 'true';
+    }
+    if (savedTimeoutSound !== null) {
+        timeoutSoundInput.checked = savedTimeoutSound === 'true';
+        timeoutSoundEnabled = savedTimeoutSound === 'true';
+    }
+}
+
+// Save settings to localStorage
+function saveSettings() {
+    localStorage.setItem('timerDuration', timerDuration.toString());
+    localStorage.setItem('tickSoundEnabled', tickSoundEnabled.toString());
+    localStorage.setItem('resetSoundEnabled', resetSoundEnabled.toString());
+    localStorage.setItem('timeoutSoundEnabled', timeoutSoundEnabled.toString());
+}
+
 // Audio context for sound generation
 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -23,10 +58,13 @@ const startScreen = document.getElementById('startScreen');
 const gameScreen = document.getElementById('gameScreen');
 const progressPie = document.getElementById('progressPie');
 const timerText = document.getElementById('timerText');
+const tapHint = document.getElementById('tapHint');
 const settingsHint = document.querySelector('.settings-hint');
 const startButton = document.getElementById('startButton');
 const timerDurationInput = document.getElementById('timerDuration');
-const soundEnabledInput = document.getElementById('soundEnabled');
+const tickSoundInput = document.getElementById('tickSoundEnabled');
+const resetSoundInput = document.getElementById('resetSoundEnabled');
+const timeoutSoundInput = document.getElementById('timeoutSoundEnabled');
 
 // SVG pie chart helper function (full-screen wipe)
 function getPiePath(percentage) {
@@ -58,7 +96,7 @@ function getPiePath(percentage) {
 
 // Sound generation functions
 function playTick() {
-    if (!soundEnabled) return;
+    if (!tickSoundEnabled) return;
     
     // 8-bit style tick - short square wave beep
     const osc = audioContext.createOscillator();
@@ -79,7 +117,7 @@ function playTick() {
 }
 
 function playReset() {
-    if (!soundEnabled) return;
+    if (!resetSoundEnabled) return;
     
     // Nintendo-style confirm beep - pleasant two-tone chime
     const now = audioContext.currentTime;
@@ -118,7 +156,7 @@ function playReset() {
 }
 
 function playTimeout() {
-    if (!soundEnabled) return;
+    if (!timeoutSoundEnabled) return;
     
     // 8-bit style error/timeout sound - descending buzz
     const now = audioContext.currentTime;
@@ -282,17 +320,20 @@ function updateDisplay() {
     if (isReady) {
         // Ready state - show "tap to start"
         timerText.style.opacity = '0';
-        settingsHint.textContent = 'East wind player ready!';
+        tapHint.classList.remove('visible');
+        settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!';
         settingsHint.classList.add('visible');
     } else if (currentTime <= 0) {
         // Timer finished - show reset/settings hint
         timerText.style.opacity = '0';
-        settingsHint.innerHTML = 'Tap to reset timer.<br>Reload page to change settings.';
+        tapHint.classList.remove('visible');
+        settingsHint.innerHTML = 'Tap anywhere to reset timer.<br>Reload to change settings.';
         settingsHint.classList.add('visible');
     } else {
-        // Timer running - show time
+        // Timer running - show time and tap hint
         timerText.style.opacity = '1';
         timerText.textContent = displayTime;
+        tapHint.classList.add('visible');
         settingsHint.classList.remove('visible');
     }
     
@@ -307,7 +348,12 @@ function updateDisplay() {
 startButton.addEventListener('click', async () => {
     // Get configuration first
     timerDuration = parseInt(timerDurationInput.value);
-    soundEnabled = soundEnabledInput.checked;
+    tickSoundEnabled = tickSoundInput.checked;
+    resetSoundEnabled = resetSoundInput.checked;
+    timeoutSoundEnabled = timeoutSoundInput.checked;
+    
+    // Save settings for next time
+    saveSettings();
     
     // Play tap sound (after checking if sound is enabled)
     playReset();
@@ -368,6 +414,9 @@ document.addEventListener('visibilitychange', async () => {
         await requestWakeLock();
     }
 });
+
+// Load saved settings when page loads
+loadSettings();
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
