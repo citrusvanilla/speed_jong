@@ -282,7 +282,7 @@ function updateDisplay() {
     if (isReady) {
         // Ready state - show "tap to start"
         timerText.style.opacity = '0';
-        settingsHint.textContent = 'Tap to start timer.';
+        settingsHint.textContent = 'East wind player ready!';
         settingsHint.classList.add('visible');
     } else if (currentTime <= 0) {
         // Timer finished - show reset/settings hint
