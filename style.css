@@ -64,10 +64,11 @@ body {
 
 h1 {
     font-size: 1.8rem;
-    margin-bottom: 2rem;
+    margin-bottom: 0;
     text-align: center;
     color: #333;
     line-height: 1.5;
+    white-space: nowrap;
 }
 
 .config-group {
