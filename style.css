@@ -64,9 +64,18 @@ body {
 
 h1 {
     font-size: 1.8rem;
-    margin-bottom: 0;
+    margin-bottom: 0.5rem;
     text-align: center;
     color: #333;
+    line-height: 1.5;
+}
+
+.byline {
+    font-size: 0.6rem;
+    text-align: center;
+    color: #666;
+    margin-bottom: 1rem;
+    font-family: 'Press Start 2P', cursive;
     line-height: 1.5;
 }
 
