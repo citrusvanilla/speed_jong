@@ -20,7 +20,7 @@ const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 // DOM elements
 const startScreen = document.getElementById('startScreen');
 const gameScreen = document.getElementById('gameScreen');
-const timerDisplay = document.getElementById('timerDisplay');
+const timerCircle = document.getElementById('timerCircle');
 const settingsHint = document.querySelector('.settings-hint');
 const startButton = document.getElementById('startButton');
 const timerDurationInput = document.getElementById('timerDuration');
@@ -243,11 +243,8 @@ function handleTimeout() {
 function updateDisplay() {
     const displayTime = currentTime.toFixed(1);
     
-    // Always show two numbers, one for top and one for bottom
-    timerDisplay.innerHTML = `
-        <span class="timer-number">${displayTime}</span>
-        <span class="timer-number">${displayTime}</span>
-    `;
+    // Display time in the center circle
+    timerCircle.textContent = displayTime;
     
     // Show instructions when timer hits 0
     if (currentTime <= 0) {
