@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Speed Jong Timer Beta</title>
+    <meta name="description" content="Multi-directional countdown timer for Speed Jong games">
+    <link rel="icon" type="image/jpeg" href="../assets/images/favicon.jpg">
+    <link rel="manifest" href="../manifest.json">
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <!-- Start Screen -->
+    <div id="startScreen" class="screen">
+        <div class="container">
+            <h1>SpeedJong Timer</h1>
+            <img src="../assets/images/mahjong.gif" alt="Mahjong" class="mahjong-gif">
+
+            <div id="tournamentInfo" class="config-group hidden" style="background: rgba(102, 126, 234, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                <div style="text-align: center; color: #667eea; font-size: 0.8rem; margin-bottom: 10px;">Tournament Mode</div>
+                <div id="tournamentTableInfo" style="text-align: center; color: #555; font-size: 0.7rem;"></div>
+                <div id="tournamentDurationInfo" style="text-align: center; color: #555; font-size: 0.7rem; margin-top: 5px;"></div>
+                <div id="tournamentRoundInfo" style="text-align: center; color: #667eea; font-size: 0.8rem; margin-top: 8px; font-weight: bold;"></div>
+            </div>
+
+            <div class="config-group" id="durationSelector">
+                <label for="timerDuration">Timer Duration (sec):</label>
+                <select id="timerDuration">
+                    <option value="3">3 (hard mode!)</option>
+                    <option value="4">4</option>
+                    <option value="5" selected>5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
+                </select>
+            </div>
+
+            <div class="config-group">
+                <label for="tickSoundEnabled">
+                    <input type="checkbox" id="tickSoundEnabled">
+                    Tick sound
+                </label>
+            </div>
+            
+            <div class="config-group">
+                <label for="resetSoundEnabled">
+                    <input type="checkbox" id="resetSoundEnabled" checked>
+                    Reset sound
+                </label>
+            </div>
+            
+            <div class="config-group">
+                <label for="timeoutSoundEnabled">
+                    <input type="checkbox" id="timeoutSoundEnabled" checked>
+                    Timeout sound
+                </label>
+            </div>
+            
+            <div class="note">
+                Put phone on "Do Not Disturb" mode!
+            </div>
+            
+            <button id="startButton" class="start-btn">READY</button>
+        </div>
+    </div>
+    
+    <!-- Game Screen -->
+    <div id="gameScreen" class="screen hidden">
+        <div class="timer-container">
+            <svg class="countdown-circle" id="countdownSvg" viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid slice">
+                <path class="countdown-pie" id="progressPie" d=""></path>
+            </svg>
+            <div class="timer-text" id="timerText"></div>
+        </div>
+        <div class="tap-hint" id="tapHint">Tap anywhere to reset</div>
+        <img src="../assets/images/magikarp.gif" alt="Timeout" class="timeout-gif" id="timeoutGif">
+        <div class="settings-hint">Tap anywhere to reset<br>Reload to change settings</div>
+        <img src="../assets/images/pickachu_happy.gif" alt="Happy" class="tap-gif" id="tapGif">
+        
+    </div>
+    
+    <!-- Tournament Scoring Modal (hidden in normal mode) -->
+    <div id="scoringModal" class="scoring-modal hidden">
+        <div class="scoring-modal-content">
+            <div class="scoring-modal-header">
+                <div id="tableInfo" style="font-size: 1.2rem; font-weight: bold; margin-bottom: 10px;">Table</div>
+                <div id="modalRoundInfo" style="font-size: 0.9rem; color: #667eea; margin-bottom: 10px;"></div>
+                <div style="font-size: 0.8rem; color: #6b7280;">Record wins for this round</div>
+            </div>
+            <div class="players-scoring" id="playersScoring"></div>
+            <button id="closeScoringBtn" class="close-scoring-btn">Back to Timer</button>
+        </div>
+    </div>
+    
+    <script type="module" src="../js/script.js"></script>
+</body>
+</html>
+

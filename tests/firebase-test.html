@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Connection Test</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        h1 {
+            color: #4ade80;
+        }
+        .test-section {
+            background: #2a2a2a;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .success {
+            background: #065f46;
+            border: 1px solid #10b981;
+        }
+        .error {
+            background: #7f1d1d;
+            border: 1px solid #ef4444;
+        }
+        .pending {
+            background: #78350f;
+            border: 1px solid #f59e0b;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:disabled {
+            background: #4a5568;
+            cursor: not-allowed;
+        }
+        pre {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔥 Firebase Connection Test</h1>
+    
+    <div class="test-section">
+        <h2>1. Firebase Initialization</h2>
+        <div id="initStatus" class="status pending">Testing...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Firestore Test</h2>
+        <button id="writeBtn">Write Test Data</button>
+        <button id="readBtn">Read Test Data</button>
+        <div id="firestoreStatus" class="status pending">Waiting for test...</div>
+        <pre id="firestoreData"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Real-time Listener Test</h2>
+        <button id="listenBtn">Start Listening</button>
+        <div id="listenerStatus" class="status pending">Not started</div>
+        <pre id="listenerData"></pre>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, addDoc } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
+        // Firebase config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDI0fUdOj9fLT92VEBQCs0rGPWm0cgIEhQ",
+            authDomain: "speedjong-285c0.firebaseapp.com",
+            projectId: "speedjong-285c0",
+            storageBucket: "speedjong-285c0.firebasestorage.app",
+            messagingSenderId: "282851961282",
+            appId: "1:282851961282:web:942a04667587d5ee320e5b",
+            measurementId: "G-GYKFD28ZLH"
+        };
+
+        // Test 1: Initialize Firebase
+        let app, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            document.getElementById('initStatus').className = 'status success';
+            document.getElementById('initStatus').textContent = '✅ Firebase initialized successfully!';
+        } catch (error) {
+            document.getElementById('initStatus').className = 'status error';
+            document.getElementById('initStatus').textContent = '❌ Error: ' + error.message;
+        }
+
+        // Test 2: Write to Firestore
+        document.getElementById('writeBtn').addEventListener('click', async () => {
+            const statusEl = document.getElementById('firestoreStatus');
+            const dataEl = document.getElementById('firestoreData');
+            
+            try {
+                statusEl.className = 'status pending';
+                statusEl.textContent = 'Writing to Firestore...';
+                
+                const testData = {
+                    message: "Hello from Speed Jong!",
+                    timestamp: new Date().toISOString(),
+                    testValue: Math.random()
+                };
+                
+                await setDoc(doc(db, "test", "connection-test"), testData);
+                
+                statusEl.className = 'status success';
+                statusEl.textContent = '✅ Data written successfully!';
+                dataEl.textContent = JSON.stringify(testData, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ Error writing: ' + error.message;
+                dataEl.textContent = error.stack;
+            }
+        });
+
+        // Test 3: Read from Firestore
+        document.getElementById('readBtn').addEventListener('click', async () => {
+            const statusEl = document.getElementById('firestoreStatus');
+            const dataEl = document.getElementById('firestoreData');
+            
+            try {
+                statusEl.className = 'status pending';
+                statusEl.textContent = 'Reading from Firestore...';
+                
+                const docRef = doc(db, "test", "connection-test");
+                const docSnap = await getDoc(docRef);
+                
+                if (docSnap.exists()) {
+                    statusEl.className = 'status success';
+                    statusEl.textContent = '✅ Data read successfully!';
+                    dataEl.textContent = JSON.stringify(docSnap.data(), null, 2);
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = '❌ No document found. Try writing first!';
+                    dataEl.textContent = '';
+                }
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ Error reading: ' + error.message;
+                dataEl.textContent = error.stack;
+            }
+        });
+
+        // Test 4: Real-time listener
+        let unsubscribe = null;
+        document.getElementById('listenBtn').addEventListener('click', () => {
+            const statusEl = document.getElementById('listenerStatus');
+            const dataEl = document.getElementById('listenerData');
+            const btn = document.getElementById('listenBtn');
+            
+            if (unsubscribe) {
+                unsubscribe();
+                unsubscribe = null;
+                btn.textContent = 'Start Listening';
+                statusEl.className = 'status pending';
+                statusEl.textContent = 'Listener stopped';
+                return;
+            }
+            
+            try {
+                const docRef = doc(db, "test", "connection-test");
+                
+                unsubscribe = onSnapshot(docRef, (doc) => {
+                    if (doc.exists()) {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Listening for changes... (click button again to stop)';
+                        dataEl.textContent = JSON.stringify(doc.data(), null, 2);
+                        btn.textContent = 'Stop Listening';
+                    } else {
+                        statusEl.className = 'status pending';
+                        statusEl.textContent = 'No data yet. Try writing first!';
+                    }
+                }, (error) => {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = '❌ Listener error: ' + error.message;
+                });
+                
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ Error: ' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
+

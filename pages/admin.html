@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Speed Jong Tournament</title>
+    <link rel="icon" type="image/jpeg" href="../assets/images/favicon.jpg">
+    <link rel="stylesheet" href="../css/admin-styles.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+</head>
+<body>
+    <div class="admin-container">
+        <header>
+            <h1>🀄 Speed Jong Tournament Admin</h1>
+            <div class="header-controls">
+                <select id="tournamentSelect">
+                    <option value="">Select Tournament...</option>
+                </select>
+                <button id="importTournamentBtn" class="btn btn-secondary">Import from JSON</button>
+                <button id="createTournamentBtn" class="btn btn-primary">+ New Tournament</button>
+                <input type="file" id="importFileInput" accept=".json" style="display: none;">
+            </div>
+        </header>
+
+        <div id="noTournamentSelected" class="empty-state">
+            <p>👆 Select or create a tournament to get started</p>
+        </div>
+
+        <div id="tournamentContent" class="hidden">
+            <!-- Tournament Info -->
+            <section class="card">
+                <div class="section-header">
+                    <h2>Tournament Info</h2>
+                    <div>
+                        <button id="exportTournamentBtn" class="btn btn-secondary btn-small">Export to JSON</button>
+                        <button id="archiveTournamentBtn" class="btn btn-secondary btn-small">Archive</button>
+                        <button id="deleteTournamentBtn" class="btn btn-danger btn-small">Delete</button>
+                    </div>
+                </div>
+                <div id="tournamentInfo"></div>
+            </section>
+
+            <!-- Round Management -->
+            <section class="card">
+                <div class="section-header">
+                    <h2>Round Management</h2>
+                    <div>
+                        <button id="moveToNextRoundBtn" class="btn btn-primary">Move to Next Round</button>
+                        <button id="startRoundBtn" class="btn btn-success" style="display: none;">Start Round</button>
+                        <button id="endRoundBtn" class="btn btn-secondary" style="display: none;">End Round</button>
+                        <button id="addTimeBtn" class="btn btn-secondary" style="display: none;">Add Time</button>
+                        <button id="createPlayoffBtnMain" class="btn btn-secondary" style="display: none;">Create Playoff Round</button>
+                        <button id="completeTournamentBtn" class="btn btn-secondary" style="display: none;">Complete Tournament</button>
+                    </div>
+                </div>
+                <div id="roundInfo"></div>
+                
+                <!-- Timer Display (shown when round is in progress) -->
+                <div id="roundTimerDisplay" style="display: none; background: #f0f9ff; border: 2px solid #3b82f6; border-radius: 12px; padding: 20px; margin-top: 15px; text-align: center;">
+                    <div style="font-size: 14px; color: #1e40af; font-weight: 600; margin-bottom: 8px;">TIME REMAINING</div>
+                    <div id="adminRoundTimer" style="font-size: 48px; font-weight: bold; font-family: 'Courier New', monospace; color: #1e40af; letter-spacing: 2px;">--:--</div>
+                    <div id="adminTimerWarning" style="font-size: 12px; color: #6b7280; margin-top: 8px;"></div>
+                </div>
+                
+                <!-- Current Round Participants -->
+                <div id="roundParticipantsSection" style="margin-top: 20px; display: none;">
+                    <h3 style="font-size: 16px; color: #374151; margin-bottom: 15px; padding-top: 20px; border-top: 2px solid #e5e7eb;">
+                        Current Round Participants
+                    </h3>
+                    <table id="roundParticipantsTable" class="display" style="width: 100%; font-size: 13px;">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Table</th>
+                                <th>Total Wins</th>
+                                <th>Round Wins</th>
+                                <th>Last Win</th>
+                            </tr>
+                        </thead>
+                        <tbody id="roundParticipantsList">
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="roundsHistory" style="margin-top: 20px;"></div>
+            </section>
+
+            <!-- Players Section -->
+            <section class="card">
+                <div class="section-header">
+                    <h2>Players: <span id="playerCount">0</span></h2>
+                    <div>
+                        <button id="bulkAddPlayersBtn" class="btn btn-success">📄 Bulk Import</button>
+                        <button id="eliminatePlayersBtn" class="btn btn-secondary" style="display: none;">Eliminate Players</button>
+                        <button id="addPlayerBtn" class="btn btn-primary">+ Add Player</button>
+                    </div>
+                </div>
+                <div id="playersList" class="players-grid"></div>
+            </section>
+
+            <!-- Tables & Map Section (Combined) -->
+            <section class="card">
+                <div class="section-header">
+                    <h2>Tables & Map (<span id="tableCount">0</span> tables)</h2>
+                    <div>
+                        <button id="autoAssignBtn" class="btn btn-secondary">Auto-Assign Players</button>
+                        <button id="bulkUnassignBtn" class="btn btn-secondary">Unassign All Players</button>
+                        <button id="bulkCreateTablesBtn" class="btn btn-secondary">Bulk Create Tables</button>
+                        <button id="addTableToMapBtn" class="btn btn-secondary">+ Add Table</button>
+                    </div>
+                </div>
+                
+                <!-- Toggle for table map -->
+                <div style="margin: 15px 0;">
+                    <label style="font-size: 16px; font-weight: 600; color: #374151; cursor: pointer;">
+                        <input type="checkbox" id="showTableMapCheckbox" style="margin-right: 8px;">
+                        Show Table Map
+                    </label>
+                </div>
+                
+                <!-- Table Map -->
+                <div id="tableMapContainer" style="display: none; margin-top: 15px; margin-bottom: 20px;">
+                    <div style="margin-bottom: 10px; font-size: 13px; color: #374151; background: #fef3c7; padding: 10px; border-radius: 6px; border-left: 4px solid #f59e0b;">
+                        💡 <strong>Drag</strong> tables to position them. <strong>Right-click</strong> a table for options (activate/deactivate, delete). Tables persist across rounds.
+                    </div>
+                    <div style="margin-bottom: 10px; font-size: 12px; color: #374151; display: flex; gap: 15px; flex-wrap: wrap; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e5e7eb;">
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <div style="width: 16px; height: 16px; border-radius: 50%; background: #10b981; border: 2px solid #1f2937;"></div>
+                            <span>Full (4/4)</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <div style="width: 16px; height: 16px; border-radius: 50%; background: #f59e0b; border: 2px solid #1f2937;"></div>
+                            <span>Partial (1-3/4)</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <div style="width: 16px; height: 16px; border-radius: 50%; background: #6b7280; border: 2px solid #1f2937;"></div>
+                            <span>Empty (0/4)</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <div style="width: 16px; height: 16px; border-radius: 50%; background: #94a3b8; border: 2px dashed #475569;"></div>
+                            <span>Inactive</span>
+                        </div>
+                    </div>
+                    <div id="tableMapCanvas" style="position: relative; width: 100%; height: 600px; min-height: 400px; border: 2px solid #e5e7eb; border-radius: 8px; background: #f9fafb; overflow: hidden;">
+                        <!-- Tables will be added here as draggable divs -->
+                    </div>
+                </div>
+                
+                <!-- Tables List -->
+                <div id="tablesList" class="tables-grid"></div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Modal for creating tournament -->
+    <div id="tournamentModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Create New Tournament</h2>
+            <form id="tournamentForm">
+                <div class="form-group">
+                    <label>Tournament Name:</label>
+                    <input type="text" id="tournamentName" required>
+                </div>
+                <div class="form-group">
+                    <label>Tournament Type:</label>
+                    <select id="tournamentType" onchange="toggleCutlineOptions()">
+                        <option value="standard">Standard</option>
+                        <option value="cutline">Cut Line</option>
+                    </select>
+                </div>
+                <div class="form-group" id="cutlineRoundsGroup" style="display: none;">
+                    <label>Number of Rounds:</label>
+                    <input type="number" id="tournamentRounds" min="2" max="10" value="4" step="1">
+                    <small style="display: block; color: #6b7280; margin-top: 5px;">
+                        1/{number of rounds} players cut each round except the last
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label>Default Timer Duration (seconds):</label>
+                    <select id="tournamentTimer">
+                        <option value="3">3 (hard mode!)</option>
+                        <option value="4">4</option>
+                        <option value="5" selected>5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                        <option value="9">9</option>
+                        <option value="10">10</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Maximum Players (0 = unlimited):</label>
+                    <input type="number" id="tournamentMaxPlayers" min="0" value="0" step="1">
+                </div>
+                <div class="form-actions">
+                    <button type="button" id="cancelTournamentBtn" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+            
+            <script>
+                function toggleCutlineOptions() {
+                    const type = document.getElementById('tournamentType').value;
+                    const cutlineGroup = document.getElementById('cutlineRoundsGroup');
+                    cutlineGroup.style.display = type === 'cutline' ? 'block' : 'none';
+                }
+            </script>
+        </div>
+    </div>
+
+    <!-- Modal for adding/editing player -->
+    <div id="playerModal" class="modal hidden">
+        <div class="modal-content">
+            <h2 id="playerModalTitle">Add Player</h2>
+            <form id="playerForm">
+                <div class="form-group">
+                    <label>Player Name:</label>
+                    <input type="text" id="playerName" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" id="cancelPlayerBtn" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Bulk Create Tables Modal -->
+    <div id="bulkCreateTablesModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Bulk Create Tables</h2>
+            <div class="form-group">
+                <label for="startTableNumber">Starting Table Number:</label>
+                <input type="number" id="startTableNumber" min="1" value="1">
+            </div>
+            <div class="form-group">
+                <label for="numTablesToCreate">Number of Tables to Create:</label>
+                <input type="number" id="numTablesToCreate" min="1" max="50" value="10">
+            </div>
+            <p style="font-size: 13px; color: #6b7280; margin: 15px 0;">
+                This will create empty tables (no players assigned yet). They will persist throughout the tournament and can be positioned on the map.
+            </p>
+            <div class="form-actions">
+                <button type="button" id="cancelBulkCreateTablesBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirmBulkCreateTablesBtn" class="btn btn-primary">Create Tables</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auto-Assign Players Modal -->
+    <div id="autoAssignModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Auto-Assign Players to Tables</h2>
+            <p id="autoAssignInfo" style="margin: 15px 0; color: #374151;"></p>
+            <div class="form-group">
+                <label>Select tables to assign players to:</label>
+                <div style="margin: 10px 0;">
+                    <button type="button" id="useFirstTablesBtn" class="btn btn-secondary" style="font-size: 13px; padding: 8px 16px;">
+                        📋 Use First Available Tables (1, 2, 3...)
+                    </button>
+                </div>
+                <div id="tableSelectionList" style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; background: #f9fafb;">
+                    <!-- Tables will be added as checkboxes here -->
+                </div>
+            </div>
+            <p id="assignmentValidation" style="font-size: 13px; margin: 15px 0;"></p>
+            <div class="form-actions">
+                <button type="button" id="cancelAutoAssignBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirmAutoAssignBtn" class="btn btn-primary" disabled>Assign Players</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Table to Map Modal -->
+    <div id="addTableToMapModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Add Table to Map</h2>
+            <div class="form-group">
+                <label for="newTableNumber">Table Number:</label>
+                <input type="number" id="newTableNumber" min="1" value="1">
+            </div>
+            <p style="font-size: 13px; color: #6b7280; margin: 15px 0;">
+                Table will be added to the center of the map. You can drag it to position it.
+            </p>
+            <div class="form-actions">
+                <button type="button" id="cancelAddTableToMapBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirmAddTableToMapBtn" class="btn btn-primary">Add Table</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- End Round Modal -->
+    <div id="endRoundModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>End Round <span id="endRoundNumber"></span></h2>
+            <div id="endRoundSummary" style="margin: 20px 0; padding: 15px; background: #f9fafb; border-radius: 8px; font-size: 14px;"></div>
+            <div id="endRoundPlayersList" style="margin: 20px 0; max-height: 300px; overflow-y: auto;"></div>
+            <div class="form-actions">
+                <button type="button" id="cancelEndRoundBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="endRoundOnlyBtn" class="btn btn-primary" style="display: none;">End Round Only</button>
+                <button type="button" id="confirmEndRoundBtn" class="btn btn-success">Complete & Setup Next Round</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Validation Error Modal -->
+    <div id="validationErrorModal" class="modal hidden">
+        <div class="modal-content">
+            <h2 style="color: #ef4444;">❌ Cannot Start Round</h2>
+            <div id="validationErrorMessage" style="margin: 20px 0; padding: 15px; background: #fee; border-left: 4px solid #ef4444; border-radius: 6px; color: #374151; font-size: 14px; line-height: 1.6;"></div>
+            <div class="form-actions">
+                <button type="button" id="closeValidationErrorBtn" class="btn btn-primary">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Start Round Confirmation Modal -->
+    <div id="startRoundConfirmModal" class="modal hidden">
+        <div class="modal-content">
+            <h2 style="color: #10b981;">🎮 Start Round <span id="startRoundNumberConfirm"></span></h2>
+            <div style="margin: 20px 0; padding: 15px; background: #f0fdf4; border-left: 4px solid #10b981; border-radius: 6px; color: #374151; font-size: 14px; line-height: 1.8;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                    <span><strong>Active Players:</strong></span>
+                    <span id="confirmActivePlayersCount" style="font-weight: bold; color: #10b981;"></span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span><strong>Tables:</strong></span>
+                    <span id="confirmTablesCount" style="font-weight: bold; color: #10b981;"></span>
+                </div>
+                <p style="margin-top: 15px; color: #059669;">✅ All players are assigned and ready to play.</p>
+            </div>
+            <div class="form-actions">
+                <button type="button" id="cancelStartRoundBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirmStartRoundBtn" class="btn btn-success">Start Round</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Seat Assignment Modal -->
+    <div id="seatAssignmentModal" class="modal hidden">
+        <div class="modal-content">
+            <h2 id="seatAssignmentTitle">Assign Player to Seat</h2>
+            <div style="margin: 15px 0; padding: 15px; background: #f3f4f6; border-radius: 8px;">
+                <div style="font-size: 14px; color: #374151; margin-bottom: 10px;">
+                    <strong>Table:</strong> <span id="seatTableNumber"></span>
+                </div>
+                <div style="font-size: 14px; color: #374151;">
+                    <strong>Position:</strong> <span id="seatPosition"></span>
+                </div>
+                <div id="currentSeatPlayer" style="font-size: 14px; color: #374151; margin-top: 10px;"></div>
+            </div>
+            <div class="form-group">
+                <label for="seatPlayerSelect">Select Player:</label>
+                <select id="seatPlayerSelect" style="width: 100%; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px;">
+                    <option value="">-- Remove Player --</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="button" id="cancelSeatAssignmentBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirmSeatAssignmentBtn" class="btn btn-primary">Assign</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table Assignment Modal (after round ends) -->
+    <div id="tableAssignmentModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Round Ended Successfully!</h2>
+            <div style="margin: 20px 0; padding: 15px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;">
+                <p style="margin: 0; color: #166534; font-size: 14px;">
+                    ✅ Round ended and players have been updated.
+                </p>
+            </div>
+            <div style="margin: 20px 0; font-size: 14px; color: #374151;">
+                <p><strong id="remainingPlayersCount"></strong> players remaining.</p>
+                <p>Would you like to automatically assign them to new tables?</p>
+            </div>
+            <div class="form-actions">
+                <button type="button" id="skipTableAssignmentBtn" class="btn btn-secondary">Skip (Assign Manually Later)</button>
+                <button type="button" id="autoAssignTablesBtn" class="btn btn-primary">Auto-Assign to Tables</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Player Actions Modal -->
+    <div id="playerActionsModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Player Actions</h2>
+            <div style="margin: 20px 0; padding: 15px; background: #f3f4f6; border-radius: 8px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #1f2937;">
+                    <span id="playerActionsName"></span>
+                </p>
+                <p style="margin: 5px 0 0; font-size: 13px; color: #6b7280;">
+                    <span id="playerActionsWins"></span> wins • <span id="playerActionsStatus"></span>
+                </p>
+            </div>
+            <div class="form-group" style="display: grid; gap: 10px;">
+                <button type="button" id="playerActionChangeScore" class="btn btn-secondary" style="justify-content: center;">
+                    Change Score for a Round
+                </button>
+                <button type="button" id="playerActionEliminate" class="btn btn-secondary" style="justify-content: center; display: none;">
+                    Eliminate Player
+                </button>
+                <button type="button" id="playerActionRestore" class="btn btn-secondary" style="justify-content: center; display: none;">
+                    Restore Player
+                </button>
+                <button type="button" id="playerActionEdit" class="btn btn-secondary" style="justify-content: center;">
+                    Edit Name
+                </button>
+                <button type="button" id="playerActionDelete" class="btn btn-secondary" style="justify-content: center;">
+                    Delete Player
+                </button>
+            </div>
+            <div class="form-actions">
+                <button type="button" id="closePlayerActionsBtn" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal (for delete/eliminate actions) -->
+    <div id="confirmActionModal" class="modal hidden">
+        <div class="modal-content">
+            <h2 id="confirmActionTitle"></h2>
+            <div id="confirmActionMessage" style="margin: 20px 0; font-size: 14px; color: #374151; line-height: 1.6;"></div>
+            <div class="form-actions">
+                <button type="button" id="cancelConfirmActionBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirmConfirmActionBtn" class="btn btn-primary">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Player Score Modal -->
+    <div id="changeScoreModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Change Player Score</h2>
+            <div style="margin: 20px 0;">
+                <p><strong>Player:</strong> <span id="changeScorePlayerName"></span></p>
+                <p><strong>Current Total Wins:</strong> <span id="changeScoreCurrentWins"></span></p>
+            </div>
+            <div class="form-group">
+                <label for="changeScoreRound">Select Round:</label>
+                <select id="changeScoreRound" style="width: 100%; padding: 8px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db;">
+                    <option value="">Select a round...</option>
+                </select>
+            </div>
+            <div class="form-group" id="changeScoreRoundInfoGroup" style="display: none;">
+                <p style="margin: 10px 0; padding: 10px; background: #f3f4f6; border-radius: 6px; font-size: 13px;">
+                    <strong>Round <span id="changeScoreRoundNum"></span> Score:</strong> <span id="changeScoreRoundWins"></span> wins<br>
+                    (Started with <span id="changeScoreRoundStart"></span> total wins)
+                </p>
+                <label for="changeScoreNewWins">New wins for this round:</label>
+                <input type="number" id="changeScoreNewWins" min="0" max="10" value="0" style="width: 100%; padding: 8px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db;">
+                <p style="font-size: 12px; color: #6b7280; margin-top: 5px;">
+                    This will update both the player's total and the round participant record.
+                </p>
+            </div>
+            <div class="form-actions">
+                <button type="button" id="cancelChangeScoreBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirmChangeScoreBtn" class="btn btn-primary" disabled>Update Score</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Eliminate Players Modal -->
+    <div id="eliminatePlayersModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Eliminate Players</h2>
+            <div id="eliminateSummary" style="margin: 20px 0; padding: 15px; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; font-size: 14px; color: #92400e;">
+                <!-- Summary will be populated -->
+            </div>
+            <div id="eliminatePlayersList" style="max-height: 300px; overflow-y: auto; margin: 15px 0; padding: 10px; background: #fee2e2; border: 1px solid #ef4444; border-radius: 8px;">
+                <!-- Players to eliminate will be listed here -->
+            </div>
+            <div class="form-actions">
+                <button type="button" id="cancelEliminateBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirmEliminateBtn" class="btn btn-primary">Eliminate Players</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Playoff Option Modal (appears after final round) -->
+    <div id="playoffOptionModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Complete Tournament</h2>
+            <div style="margin: 20px 0; padding: 15px; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px;">
+                <p style="margin: 0; color: #92400e; font-size: 14px;">
+                    All <span id="playoffTotalRounds"></span> scheduled rounds have been completed.
+                </p>
+            </div>
+            <div style="margin: 20px 0; font-size: 14px; color: #374151;">
+                <p><strong id="playoffRemainingPlayers"></strong> player(s) remaining.</p>
+                <p>Would you like to add a playoff round?</p>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="playoffPlayerCount">Number of players in playoff:</label>
+                    <select id="playoffPlayerCount" style="width: 100%; padding: 8px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db;">
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                </div>
+                <p style="color: #6b7280; font-size: 13px; margin-top: 10px;">
+                    Top ranked players will be selected for the playoff. You can create multiple playoff rounds if needed.
+                </p>
+            </div>
+            <div class="form-actions">
+                <button type="button" id="endTournamentBtn" class="btn btn-secondary">End Tournament</button>
+                <button type="button" id="createPlayoffBtn" class="btn btn-success">Create Playoff Round</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for bulk player import -->
+    <div id="bulkPlayerModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Bulk Import Players</h2>
+            <p style="color: #6b7280; font-size: 14px; margin-bottom: 15px;">
+                Upload a text file (.txt or .csv) with one player name per line, or paste names below.
+            </p>
+            
+            <div class="form-group">
+                <label>Upload File:</label>
+                <input type="file" id="bulkPlayerFile" accept=".txt,.csv">
+                <small style="display: block; color: #6b7280; margin-top: 5px;">
+                    Format: One name per line (e.g., "John Smith")
+                </small>
+            </div>
+            
+            <div style="text-align: center; margin: 15px 0; color: #9ca3af; font-weight: bold;">OR</div>
+            
+            <div class="form-group">
+                <label>Paste Names:</label>
+                <textarea id="bulkPlayerText" rows="10" placeholder="John Smith&#10;Jane Doe&#10;Bob Johnson" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: monospace;"></textarea>
+                <small style="display: block; color: #6b7280; margin-top: 5px;">
+                    One name per line
+                </small>
+            </div>
+            
+            <div id="bulkPlayerPreview" style="margin-top: 15px; display: none;">
+                <strong>Preview:</strong>
+                <div id="bulkPlayerPreviewList" style="max-height: 200px; overflow-y: auto; background: #f9fafb; padding: 10px; border-radius: 6px; margin-top: 5px; font-size: 13px;"></div>
+            </div>
+            
+            <div class="form-actions">
+                <button type="button" id="cancelBulkPlayerBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="previewBulkPlayerBtn" class="btn btn-primary">Preview</button>
+                <button type="button" id="importBulkPlayerBtn" class="btn btn-success" style="display: none;">Import Players</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" style="position: fixed; top: 20px; right: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; max-width: 400px;"></div>
+
+    <!-- Modal for creating/editing table -->
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <!-- Fabric.js removed - using simple HTML divs instead -->
+    <script type="module" src="../js/admin.js"></script>
+</body>
+</html>
+

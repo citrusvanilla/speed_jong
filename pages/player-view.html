@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Assignment - Speed Jong</title>
+    <link rel="icon" type="image/jpeg" href="../assets/images/favicon.jpg">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+
+        .player-select {
+            margin-bottom: 30px;
+        }
+
+        select {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .assignment-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 16px;
+            margin-top: 20px;
+        }
+
+        .assignment-card.not-assigned {
+            background: #f3f4f6;
+            color: #6b7280;
+        }
+
+        .table-info {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        .position-info {
+            font-size: 32px;
+            margin: 15px 0;
+        }
+
+        .wind-symbol {
+            font-size: 64px;
+            margin: 20px 0;
+        }
+
+        .not-assigned-message {
+            font-size: 18px;
+            font-style: italic;
+        }
+
+        .other-players {
+            margin-top: 25px;
+            padding-top: 25px;
+            border-top: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .other-players h3 {
+            font-size: 16px;
+            margin-bottom: 15px;
+            opacity: 0.9;
+        }
+
+        .player-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .player-item {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .loading {
+            color: #6b7280;
+            font-size: 18px;
+        }
+
+        .timer-link {
+            margin-top: 30px;
+        }
+
+        .timer-link a {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 15px 30px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 18px;
+            transition: all 0.2s;
+        }
+
+        .timer-link a:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 25px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .table-info {
+                font-size: 36px;
+            }
+            
+            .position-info {
+                font-size: 24px;
+            }
+            
+            .wind-symbol {
+                font-size: 48px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🀄 Speed Jong Tournament</h1>
+        
+        <div class="player-select">
+            <select id="playerSelect">
+                <option value="">Select your name...</option>
+            </select>
+        </div>
+
+        <div id="content">
+            <div class="loading">Select your name to see your assignment</div>
+        </div>
+
+        <div class="timer-link">
+            <a href="../index.html">🎮 Launch Timer</a>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+        import { 
+            getFirestore, 
+            collection, 
+            doc,
+            getDoc,
+            getDocs,
+            onSnapshot,
+            query,
+            orderBy,
+            limit
+        } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
+        // Firebase config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDI0fUdOj9fLT92VEBQCs0rGPWm0cgIEhQ",
+            authDomain: "speedjong-285c0.firebaseapp.com",
+            projectId: "speedjong-285c0",
+            storageBucket: "speedjong-285c0.firebasestorage.app",
+            messagingSenderId: "282851961282",
+            appId: "1:282851961282:web:942a04667587d5ee320e5b",
+            measurementId: "G-GYKFD28ZLH"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let currentTournamentId = null;
+        let currentPlayerId = null;
+        let playersData = {};
+        let tablesData = {};
+
+        // Load most recent tournament
+        async function loadLatestTournament() {
+            try {
+                const tournamentsSnap = await getDocs(collection(db, 'tournaments'));
+                
+                if (tournamentsSnap.empty) {
+                    document.getElementById('content').innerHTML = 
+                        '<div class="not-assigned-message">No tournaments available yet.</div>';
+                    return;
+                }
+
+                // Filter to only active tournaments (not setup or completed)
+                const activeTournaments = [];
+                tournamentsSnap.forEach(doc => {
+                    const data = doc.data();
+                    if (data.status === 'active') {
+                        activeTournaments.push({ id: doc.id, ...data });
+                    }
+                });
+
+                if (activeTournaments.length === 0) {
+                    document.getElementById('content').innerHTML = 
+                        '<div class="not-assigned-message">No active tournaments. Please wait for the organizer to start the tournament.</div>';
+                    return;
+                }
+
+                // Sort by creation date (most recent first)
+                activeTournaments.sort((a, b) => {
+                    const aTime = a.createdAt?.toMillis() || 0;
+                    const bTime = b.createdAt?.toMillis() || 0;
+                    return bTime - aTime;
+                });
+
+                // Use the most recent active tournament
+                currentTournamentId = activeTournaments[0].id;
+                
+                loadPlayers();
+            } catch (error) {
+                console.error('Error loading tournament:', error);
+                document.getElementById('content').innerHTML = 
+                    `<div class="not-assigned-message">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function loadPlayers() {
+            if (!currentTournamentId) return;
+
+            const playersRef = collection(db, 'tournaments', currentTournamentId, 'players');
+            const playersSnap = await getDocs(playersRef);
+            
+            const playerSelect = document.getElementById('playerSelect');
+            playerSelect.innerHTML = '<option value="">Select your name...</option>';
+            
+            playersSnap.forEach((doc) => {
+                playersData[doc.id] = { id: doc.id, ...doc.data() };
+                const option = document.createElement('option');
+                option.value = doc.id;
+                option.textContent = doc.data().name;
+                playerSelect.appendChild(option);
+            });
+
+            // Restore saved selection
+            const savedPlayerId = localStorage.getItem('selectedPlayerId');
+            if (savedPlayerId && playersData[savedPlayerId]) {
+                playerSelect.value = savedPlayerId;
+                selectPlayer(savedPlayerId);
+            }
+        }
+
+        document.getElementById('playerSelect').addEventListener('change', (e) => {
+            if (e.target.value) {
+                localStorage.setItem('selectedPlayerId', e.target.value);
+                selectPlayer(e.target.value);
+            }
+        });
+
+        async function selectPlayer(playerId) {
+            currentPlayerId = playerId;
+            
+            // Set up real-time listener for this player
+            const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
+            onSnapshot(playerRef, async (playerDoc) => {
+                if (!playerDoc.exists()) return;
+                
+                const playerData = playerDoc.data();
+                playersData[playerId] = { id: playerId, ...playerData };
+                
+                if (playerData.tableId) {
+                    // Load table data
+                    const tableRef = doc(db, 'tournaments', currentTournamentId, 'tables', playerData.tableId);
+                    const tableDoc = await getDoc(tableRef);
+                    
+                    if (tableDoc.exists()) {
+                        displayAssignment(playerData, tableDoc.data());
+                    }
+                } else {
+                    displayNotAssigned();
+                }
+            });
+        }
+
+        function displayAssignment(playerData, tableData) {
+            const windSymbols = { East: '東', South: '南', West: '西', North: '北' };
+            const position = playerData.position;
+            const windSymbol = windSymbols[position] || '';
+            
+            // Get other players at the table
+            const otherPlayers = (tableData.players || [])
+                .filter(id => id !== currentPlayerId)
+                .map(id => {
+                    const player = playersData[id] || { name: 'Loading...' };
+                    const pos = tableData.positions[id];
+                    return { name: player.name, position: pos, symbol: windSymbols[pos] };
+                });
+
+            const otherPlayersHTML = otherPlayers.map(p => `
+                <div class="player-item">
+                    <span>${p.name}</span>
+                    <span>${p.symbol} ${p.position}</span>
+                </div>
+            `).join('');
+
+            document.getElementById('content').innerHTML = `
+                <div class="assignment-card">
+                    <div>You are assigned to:</div>
+                    <div class="table-info">Table ${tableData.tableNumber}</div>
+                    <div class="wind-symbol">${windSymbol}</div>
+                    <div class="position-info">${position}</div>
+                    
+                    ${otherPlayers.length > 0 ? `
+                        <div class="other-players">
+                            <h3>Your Opponents:</h3>
+                            <div class="player-list">
+                                ${otherPlayersHTML}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function displayNotAssigned() {
+            document.getElementById('content').innerHTML = `
+                <div class="assignment-card not-assigned">
+                    <div class="not-assigned-message">
+                        You haven't been assigned to a table yet.<br>
+                        Please wait for the tournament organizer.
+                    </div>
+                </div>
+            `;
+        }
+
+        // Initialize
+        loadLatestTournament();
+    </script>
+</body>
+</html>
+

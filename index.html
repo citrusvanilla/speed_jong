@@ -5,78 +5,101 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-capable" content="yes">
-    <title>Speed Jong Timer Beta</title>
-    <meta name="description" content="Multi-directional countdown timer for Speed Jong games">
-    <link rel="icon" type="image/jpeg" href="favicon.jpg">
-    <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="style.css">
+    <title>Speed Jong Timer</title>
+    <link rel="icon" type="image/jpeg" href="assets/images/favicon.jpg">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .mode-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .mode-card {
+            background: rgba(255, 255, 255, 0.95);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
+            padding: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            width: 100%;
+            font-family: 'Press Start 2P', cursive;
+        }
+
+        .mode-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(255, 255, 255, 0.6);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .mode-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+            line-height: 1.5;
+        }
+
+        .mode-description {
+            font-size: 0.6rem;
+            color: #666;
+            line-height: 1.5;
+            font-family: 'Press Start 2P', cursive;
+        }
+
+        .admin-link {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .admin-link {
+            font-family: 'Press Start 2P', cursive;
+        }
+
+        .admin-link a {
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            font-size: 0.6rem;
+            transition: color 0.2s;
+        }
+
+        .admin-link a:hover {
+            color: white;
+            text-decoration: underline;
+        }
+    </style>
 </head>
 <body>
-    <!-- Start Screen -->
     <div id="startScreen" class="screen">
-        <div class="container">
-            <h1>SpeedJong Timer</h1>
-            <img src="mahjong.gif" alt="Mahjong" class="mahjong-gif">
+        <div class="container" style="background: transparent; box-shadow: none; padding: 2rem 1rem;">
+            <h1 style="color: white; text-shadow: 0 2px 10px rgba(0,0,0,0.5);">SpeedJong Timer</h1>
+            <img src="assets/images/mahjong.gif" alt="Mahjong" class="mahjong-gif">
 
-            <div class="config-group">
-                <label for="timerDuration">Timer Duration (sec):</label>
-                <select id="timerDuration">
-                    <option value="3">3 (hard mode!)</option>
-                    <option value="4">4</option>
-                    <option value="5" selected>5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9</option>
-                    <option value="10">10</option>
-                </select>
+            <div class="mode-container">
+                <button class="mode-card" onclick="window.location.href='pages/timer.html?mode=normal'">
+                    <div class="mode-title">Practice Mode</div>
+                    <div class="mode-description">
+                        Just use the timer without tournament tracking
+                    </div>
+                </button>
+
+                <button class="mode-card" onclick="window.location.href='pages/tournament-select.html'">
+                    <div class="mode-title">Tournament Mode</div>
+                    <div class="mode-description">
+                        Select your table and track scores in the tournament
+                    </div>
+                </button>
             </div>
 
-            <div class="config-group">
-                <label for="tickSoundEnabled">
-                    <input type="checkbox" id="tickSoundEnabled">
-                    Tick sound
-                </label>
+            <div class="admin-link">
+                <a href="pages/player-view.html">View my assignment</a> • 
+                <a href="pages/leaderboard.html">Leaderboard</a>
             </div>
-            
-            <div class="config-group">
-                <label for="resetSoundEnabled">
-                    <input type="checkbox" id="resetSoundEnabled" checked>
-                    Reset sound
-                </label>
-            </div>
-            
-            <div class="config-group">
-                <label for="timeoutSoundEnabled">
-                    <input type="checkbox" id="timeoutSoundEnabled" checked>
-                    Timeout sound
-                </label>
-            </div>
-            
-            <div class="note">
-                Put phone on "Do Not Disturb" mode!
-            </div>
-            
-            <button id="startButton" class="start-btn">READY</button>
         </div>
     </div>
-    
-    <!-- Game Screen -->
-    <div id="gameScreen" class="screen hidden">
-        <div class="timer-container">
-            <svg class="countdown-circle" id="countdownSvg" viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid slice">
-                <path class="countdown-pie" id="progressPie" d=""></path>
-            </svg>
-            <div class="timer-text" id="timerText"></div>
-        </div>
-        <div class="tap-hint" id="tapHint">Tap anywhere to reset</div>
-        <img src="magikarp.gif" alt="Timeout" class="timeout-gif" id="timeoutGif">
-        <div class="settings-hint">Tap anywhere to reset<br>Reload to change settings</div>
-        <img src="pickachu_happy.gif" alt="Happy" class="tap-gif" id="tapGif">
-    </div>
-    
-    <script src="script.js"></script>
 </body>
 </html>
 

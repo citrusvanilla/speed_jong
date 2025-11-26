@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaderboard - Speed Jong</title>
+    <link rel="icon" type="image/jpeg" href="../assets/images/favicon.jpg">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 95%;
+            width: 100%;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        @media (min-width: 1400px) {
+            .container {
+                max-width: 1600px;
+            }
+        }
+        
+        @media (min-width: 1800px) {
+            .container {
+                max-width: 1800px;
+            }
+        }
+
+        h1 {
+            text-align: center;
+            color: white;
+            font-size: 48px;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .round-info-header {
+            text-align: center;
+            color: white;
+            margin-bottom: 25px;
+        }
+
+        .round-number {
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            margin-bottom: 5px;
+        }
+
+        .round-status {
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.9;
+            margin-bottom: 15px;
+        }
+
+        .round-timer {
+            font-size: 72px;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 2px 15px rgba(0, 0, 0, 0.4);
+            margin: 15px 0;
+            letter-spacing: 4px;
+        }
+
+        .round-timer.warning {
+            color: #fbbf24;
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        .round-timer.danger {
+            color: #ef4444;
+            animation: pulse 0.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .tournament-name {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 16px;
+            margin-top: 10px;
+        }
+
+        .leaderboard {
+            background: white;
+            border-radius: 20px;
+            overflow: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-height: 85vh;
+        }
+
+        .leaderboard-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            display: grid;
+            grid-template-columns: 50px 1fr 65px 65px 85px;
+            gap: 8px;
+            font-weight: bold;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .leaderboard-body {
+            width: 100%;
+        }
+
+        .leaderboard-columns {
+            display: grid;
+            width: 100%;
+            gap: 0;
+        }
+        
+        .leaderboard-columns.cols-1 {
+            grid-template-columns: 1fr;
+        }
+        
+        .leaderboard-columns.cols-2 {
+            grid-template-columns: 1fr 1fr;
+        }
+        
+        .leaderboard-columns.cols-3 {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+
+        .leaderboard-column {
+            border-right: 2px solid #e5e7eb;
+            min-width: 0;
+        }
+
+        .leaderboard-column:last-child {
+            border-right: none;
+        }
+
+        .leaderboard-row {
+            padding: 15px 20px;
+            display: grid;
+            grid-template-columns: 50px 1fr 65px 65px 85px;
+            gap: 8px;
+            align-items: center;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background 0.2s;
+        }
+
+        .leaderboard-row:hover {
+            background: #f9fafb;
+        }
+
+        .rank {
+            font-size: 22px;
+            font-weight: bold;
+            color: #667eea;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .rank-1 { color: #fbbf24; }
+        .rank-2 { color: #9ca3af; }
+        .rank-3 { color: #cd7f32; }
+        
+        .movement-up {
+            color: #10b981;
+            font-size: 16px;
+            animation: slideUp 0.5s ease;
+        }
+        
+        .movement-down {
+            color: #ef4444;
+            font-size: 16px;
+            animation: slideDown 0.5s ease;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-5px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .player-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .player-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .player-table {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+
+        .total-wins {
+            font-size: 20px;
+            font-weight: bold;
+            color: #10b981;
+            text-align: center;
+        }
+
+        .round-wins {
+            font-size: 18px;
+            font-weight: 600;
+            color: #667eea;
+            text-align: center;
+        }
+
+        .time-since {
+            font-size: 13px;
+            font-weight: 500;
+            color: #6b7280;
+            text-align: center;
+        }
+        
+        .cut-line {
+            background: #fee2e2;
+            border-top: 3px solid #ef4444;
+            border-bottom: 3px solid #ef4444;
+            border-left: 3px solid #ef4444;
+            border-right: 3px solid #ef4444;
+            padding: 10px 15px;
+            text-align: center;
+            font-weight: bold;
+            color: #991b1b;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            border-radius: 8px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #6b7280;
+            font-size: 18px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #6b7280;
+            font-size: 18px;
+        }
+
+        .live-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: #10b981;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @keyframes flashWin {
+            0%, 100% {
+                background: rgba(16, 185, 129, 0.1);
+            }
+            50% {
+                background: rgba(16, 185, 129, 0.4);
+            }
+        }
+        
+        @keyframes flashLoss {
+            0%, 100% {
+                background: rgba(239, 68, 68, 0.2);
+            }
+            50% {
+                background: rgba(239, 68, 68, 0.5);
+            }
+        }
+        
+        .recent-win {
+            animation: flashWin 1s ease-in-out infinite;
+        }
+        
+        .recent-loss {
+            animation: flashLoss 1s ease-in-out infinite !important;
+        }
+
+        .back-link {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .back-link a {
+            color: white;
+            text-decoration: none;
+            font-size: 18px;
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            display: inline-block;
+            transition: all 0.2s;
+        }
+
+        .back-link a:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .stats-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #6b7280;
+            margin-top: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        @media (max-width: 900px) {
+            .leaderboard-columns {
+                display: block !important;
+            }
+            
+            .leaderboard-column {
+                border-right: none;
+                border-bottom: 2px solid #e5e7eb;
+            }
+            
+            .leaderboard-column:last-child {
+                border-bottom: none;
+            }
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 28px;
+            }
+
+            .leaderboard-header,
+            .leaderboard-row {
+                grid-template-columns: 38px 1fr 50px 50px 70px;
+                padding: 10px 12px;
+                gap: 6px;
+                font-size: 10px;
+            }
+
+            .player-name {
+                font-size: 13px;
+            }
+            
+            .player-table {
+                font-size: 10px;
+            }
+
+            .total-wins {
+                font-size: 16px;
+            }
+
+            .round-wins {
+                font-size: 14px;
+            }
+
+            .time-since {
+                font-size: 11px;
+            }
+
+            .stats-summary {
+                grid-template-columns: 1fr;
+            }
+            
+            .rank {
+                font-size: 16px;
+            }
+            
+            .cut-line {
+                font-size: 10px;
+                padding: 8px 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="tournamentSelector" style="text-align: center; margin-bottom: 15px;">
+            <select id="tournamentSelect" style="display: none; padding: 10px 15px; font-size: 14px; border-radius: 8px; border: 2px solid #e5e7eb; background: white; max-width: 400px; width: 90%;">
+                <option value="">Select Tournament...</option>
+            </select>
+        </div>
+        
+        <div class="round-info-header">
+            <div class="round-number" id="roundNumber">Round 0</div>
+            <div class="round-status" id="roundStatus">Loading...</div>
+            <div class="round-timer" id="roundTimer"></div>
+            <div class="tournament-name">
+                <span class="live-indicator"></span>
+                <span id="tournamentName">Loading...</span>
+            </div>
+        </div>
+
+        <div class="stats-summary" id="statsContainer"></div>
+
+        <div class="leaderboard">
+            <div class="leaderboard-body" id="leaderboardBody">
+                <div class="loading">Loading leaderboard...</div>
+            </div>
+        </div>
+
+        <div class="back-link">
+            <a href="../index.html">← Back to Home</a>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+        import { 
+            getFirestore, 
+            collection,
+            doc,
+            getDoc,
+            getDocs,
+            onSnapshot
+        } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+        import { calculateCutLineTarget, sortPlayersForLeaderboard } from '../js/cutline-utils.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDI0fUdOj9fLT92VEBQCs0rGPWm0cgIEhQ",
+            authDomain: "speedjong-285c0.firebaseapp.com",
+            projectId: "speedjong-285c0",
+            storageBucket: "speedjong-285c0.firebasestorage.app",
+            messagingSenderId: "282851961282",
+            appId: "1:282851961282:web:942a04667587d5ee320e5b",
+            measurementId: "G-GYKFD28ZLH"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let currentTournamentId = null;
+        let tablesData = {};
+        let tournaments = [];
+        let previousPositions = {}; // Track previous positions for movement indicators
+        let roundParticipants = {}; // Track round start snapshots
+        let currentTournamentData = null; // Track tournament data for cut line calculations
+        let historicalPlayersCache = []; // Cache historical participants (loaded once)
+        let currentRoundData = null; // Track current round data (with timer info)
+        let timerInterval = null; // Timer update interval
+        let serverSyncInterval = null; // Server resync interval (for round data)
+        let tournamentListener = null; // Tournament document listener
+
+        function updateRoundHeader() {
+            const currentRound = currentTournamentData?.currentRound || 0;
+            const roundInProgress = currentTournamentData?.roundInProgress || false;
+            const isPlayoff = currentRoundData?.isPlayoff || false;
+            
+            // Update round number
+            const roundNumberEl = document.getElementById('roundNumber');
+            if (currentRound === 0) {
+                roundNumberEl.textContent = 'No Round Started';
+            } else {
+                const totalRounds = currentTournamentData?.totalRounds || 0;
+                let roundText = totalRounds > 0 
+                    ? `Round ${currentRound} / ${totalRounds}`
+                    : `Round ${currentRound}`;
+                
+                if (isPlayoff) {
+                    roundText = `Round ${currentRound} - PLAYOFF`;
+                }
+                
+                roundNumberEl.textContent = roundText;
+            }
+            
+            // Update round status
+            const roundStatusEl = document.getElementById('roundStatus');
+            if (currentRound === 0) {
+                roundStatusEl.textContent = 'Waiting to Start';
+            } else if (currentRoundData) {
+                const status = currentRoundData.status || 'staging';
+                if (status === 'in_progress') {
+                    roundStatusEl.textContent = 'IN PROGRESS';
+                } else if (status === 'completed') {
+                    roundStatusEl.textContent = 'COMPLETED';
+                } else {
+                    roundStatusEl.textContent = 'STAGING';
+                }
+            }
+            
+            // Clear timer if not in progress
+            if (!roundInProgress) {
+                document.getElementById('roundTimer').textContent = '';
+            }
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function updateTimerDisplay() {
+            if (!currentRoundData || !currentRoundData.startedAt) {
+                document.getElementById('roundTimer').textContent = '';
+                return;
+            }
+            
+            const timerDuration = currentRoundData.timerDuration || 0; // in minutes
+            const totalSeconds = timerDuration * 60;
+            
+            // Calculate elapsed time
+            const startTime = currentRoundData.startedAt.toMillis();
+            const now = Date.now();
+            const elapsedSeconds = Math.floor((now - startTime) / 1000);
+            const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+            
+            const timerEl = document.getElementById('roundTimer');
+            timerEl.textContent = formatTime(remainingSeconds);
+            
+            // Apply warning/danger classes
+            const percentRemaining = remainingSeconds / totalSeconds;
+            timerEl.classList.remove('warning', 'danger');
+            
+            if (remainingSeconds === 0) {
+                timerEl.classList.add('danger');
+                timerEl.textContent = '⏰ TIME UP!';
+            } else if (percentRemaining <= 0.1) {
+                timerEl.classList.add('danger');
+            } else if (percentRemaining <= 0.25) {
+                timerEl.classList.add('warning');
+            }
+        }
+
+        function startRoundTimer() {
+            // Clear existing intervals
+            if (timerInterval) clearInterval(timerInterval);
+            if (serverSyncInterval) clearInterval(serverSyncInterval);
+            
+            // Update timer immediately
+            updateTimerDisplay();
+            
+            // Update timer every second
+            timerInterval = setInterval(() => {
+                updateTimerDisplay();
+            }, 1000);
+            
+            // Set up real-time listener for round changes (instant updates!)
+            if (currentRoundData && currentTournamentId) {
+                const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', currentRoundData.id);
+                
+                // Real-time listener - updates immediately when admin changes timer or ends round
+                serverSyncInterval = onSnapshot(roundRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        const freshData = snapshot.data();
+                        const oldStatus = currentRoundData?.status;
+                        const newStatus = freshData.status;
+                        
+                        // Update startedAt and timerDuration (admin might have added time)
+                        if (freshData.startedAt) {
+                            currentRoundData.startedAt = freshData.startedAt;
+                        }
+                        if (freshData.timerDuration !== undefined) {
+                            currentRoundData.timerDuration = freshData.timerDuration;
+                        }
+                        
+                        // Check if round ended
+                        if (freshData.status === 'completed' && oldStatus !== 'completed') {
+                            clearInterval(timerInterval);
+                            timerInterval = null;
+                            if (serverSyncInterval && typeof serverSyncInterval === 'function') {
+                                serverSyncInterval(); // Unsubscribe from listener
+                                serverSyncInterval = null;
+                            }
+                            currentRoundData.status = 'completed'; // Update local status
+                            updateRoundHeader();
+                            document.getElementById('roundTimer').textContent = '';
+                            
+                            // Refresh leaderboard when round ends
+                            if (cachedPlayers.length > 0) {
+                                displayLeaderboard(cachedPlayers);
+                            }
+                        }
+                        
+                        // Update timer display with fresh data (if still in progress)
+                        if (freshData.status === 'in_progress') {
+                            updateTimerDisplay();
+                        }
+                    }
+                }, (error) => {
+                    console.error('Error in round listener:', error);
+                });
+            }
+        }
+
+        async function loadTournaments() {
+            try {
+                const tournamentsSnap = await getDocs(collection(db, 'tournaments'));
+                
+                if (tournamentsSnap.empty) {
+                    document.getElementById('leaderboardBody').innerHTML = 
+                        '<div class="empty-state">No active tournament.</div>';
+                    return;
+                }
+
+                // Load all tournaments (including completed for viewing history)
+                tournaments = [];
+                tournamentsSnap.forEach(doc => {
+                    tournaments.push({ id: doc.id, ...doc.data() });
+                });
+
+                if (tournaments.length === 0) {
+                    document.getElementById('leaderboardBody').innerHTML = 
+                        '<div class="empty-state">No tournaments found.</div>';
+                    return;
+                }
+
+                // Sort by most recent first, prioritize active tournaments
+                tournaments.sort((a, b) => {
+                    // Prioritize active tournaments over setup/completed
+                    const statusPriority = { 'active': 0, 'in_progress': 0, 'completed': 1, 'staging': 2 };
+                    const aPriority = statusPriority[a.status] || 3;
+                    const bPriority = statusPriority[b.status] || 3;
+                    
+                    if (aPriority !== bPriority) {
+                        return aPriority - bPriority;
+                    }
+                    
+                    // Then by creation date (most recent first)
+                    const aTime = a.createdAt?.toMillis() || 0;
+                    const bTime = b.createdAt?.toMillis() || 0;
+                    return bTime - aTime;
+                });
+
+                // If multiple tournaments, show dropdown selector
+                if (tournaments.length > 1) {
+                    const tournamentSelect = document.getElementById('tournamentSelect');
+                    tournamentSelect.style.display = 'block';
+                    
+                    const statusEmoji = {
+                        'active': '🟢',
+                        'setup': '🟡',
+                        'completed': '⚫'
+                    };
+                    
+                    tournamentSelect.innerHTML = tournaments.map(t => 
+                        `<option value="${t.id}">${statusEmoji[t.status] || ''} ${t.name} (${t.status})</option>`
+                    ).join('');
+                    
+                    tournamentSelect.addEventListener('change', (e) => {
+                        selectTournament(e.target.value);
+                    });
+                    
+                    // Auto-select first one
+                    tournamentSelect.value = tournaments[0].id;
+                }
+
+                // Load the first/most relevant tournament
+                selectTournament(tournaments[0].id);
+                
+            } catch (error) {
+                console.error('Error loading tournaments:', error);
+                document.getElementById('leaderboardBody').innerHTML = 
+                    `<div class="empty-state">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function selectTournament(tournamentId) {
+            currentTournamentId = tournamentId;
+            currentTournamentData = tournaments.find(t => t.id === tournamentId);
+            
+            // Clear existing timers and listeners
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            if (serverSyncInterval) {
+                // serverSyncInterval is now an unsubscribe function from onSnapshot
+                if (typeof serverSyncInterval === 'function') {
+                    serverSyncInterval(); // Unsubscribe
+                }
+                serverSyncInterval = null;
+            }
+            if (tournamentListener) {
+                if (typeof tournamentListener === 'function') {
+                    tournamentListener(); // Unsubscribe
+                }
+                tournamentListener = null;
+            }
+            
+            if (currentTournamentData) {
+                document.getElementById('tournamentName').textContent = currentTournamentData.name;
+                
+                // Load current round data
+                const currentRound = currentTournamentData.currentRound || 0;
+                const roundInProgress = currentTournamentData.roundInProgress || false;
+                
+                currentRoundData = null;
+                if (currentRound > 0) {
+                    try {
+                        const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
+                        for (const roundDoc of roundsSnap.docs) {
+                            const roundData = roundDoc.data();
+                            if (roundData.roundNumber === currentRound) {
+                                currentRoundData = { id: roundDoc.id, ...roundData };
+                                break;
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error loading round data:', error);
+                    }
+                }
+                
+                // Update round header display
+                updateRoundHeader();
+                
+                // Start timer if round is in progress
+                if (roundInProgress && currentRoundData) {
+                    startRoundTimer();
+                }
+                
+                // Load tables for reference
+                tablesData = {};
+                const tablesSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'tables'));
+                tablesSnap.forEach(doc => {
+                    tablesData[doc.id] = { id: doc.id, ...doc.data() };
+                });
+                
+                // Load round participants for current round
+                roundParticipants = {};
+                if (currentRound > 0 && roundInProgress && currentRoundData) {
+                    try {
+                        const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', currentRoundData.id, 'participants'));
+                        participantsSnap.forEach(pDoc => {
+                            const pData = pDoc.data();
+                            roundParticipants[pData.playerId] = pData;
+                        });
+                    } catch (error) {
+                        console.error('Error loading round participants:', error);
+                    }
+                }
+
+                // Set up real-time listeners for tournament and players
+                setupTournamentListener();
+                setupPlayersListener();
+            }
+        }
+        
+        // Set up real-time listener for tournament document (to detect round changes)
+        function setupTournamentListener() {
+            const tournamentRef = doc(db, 'tournaments', currentTournamentId);
+            
+            tournamentListener = onSnapshot(tournamentRef, async (snapshot) => {
+                if (snapshot.exists()) {
+                    const freshTournamentData = snapshot.data();
+                    const oldRound = currentTournamentData?.currentRound || 0;
+                    const oldRoundInProgress = currentTournamentData?.roundInProgress || false;
+                    const newRound = freshTournamentData.currentRound || 0;
+                    const newRoundInProgress = freshTournamentData.roundInProgress || false;
+                    
+                    // Update current tournament data
+                    currentTournamentData = { id: snapshot.id, ...freshTournamentData };
+                    
+                    // If round changed, reload round data
+                    if (oldRound !== newRound) {
+                        // Clear existing round listener
+                        if (serverSyncInterval && typeof serverSyncInterval === 'function') {
+                            serverSyncInterval();
+                            serverSyncInterval = null;
+                        }
+                        if (timerInterval) {
+                            clearInterval(timerInterval);
+                            timerInterval = null;
+                        }
+                        
+                        // Load new round data
+                        currentRoundData = null;
+                        if (newRound > 0) {
+                            try {
+                                const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
+                                for (const roundDoc of roundsSnap.docs) {
+                                    const roundData = roundDoc.data();
+                                    if (roundData.roundNumber === newRound) {
+                                        currentRoundData = { id: roundDoc.id, ...roundData };
+                                        break;
+                                    }
+                                }
+                                
+                                // Load round participants for new round
+                                if (currentRoundData) {
+                                    roundParticipants = {};
+                                    try {
+                                        const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', currentRoundData.id, 'participants'));
+                                        participantsSnap.forEach(pDoc => {
+                                            const pData = pDoc.data();
+                                            roundParticipants[pData.playerId] = pData;
+                                        });
+                                    } catch (error) {
+                                        console.error('Error loading round participants:', error);
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('Error loading round data:', error);
+                            }
+                        }
+                        
+                        // Update round header
+                        updateRoundHeader();
+                        
+                        // Start timer if new round is in progress
+                        if (newRoundInProgress && currentRoundData) {
+                            startRoundTimer();
+                        }
+                        
+                        // Refresh leaderboard with new round context
+                        if (cachedPlayers.length > 0) {
+                            displayLeaderboard(cachedPlayers);
+                        }
+                    } else {
+                        // Round didn't change, but maybe roundInProgress or other fields did
+                        
+                        // If roundInProgress changed, reload current round data to get updated status
+                        if (newRoundInProgress !== oldRoundInProgress && newRound > 0 && currentRoundData) {
+                            try {
+                                const roundDoc = await getDoc(doc(db, 'tournaments', currentTournamentId, 'rounds', currentRoundData.id));
+                                if (roundDoc.exists()) {
+                                    currentRoundData = { id: roundDoc.id, ...roundDoc.data() };
+                                    
+                                    // If round just started, set up timer
+                                    if (newRoundInProgress && currentRoundData.status === 'in_progress') {
+                                        startRoundTimer();
+                                    }
+                                    
+                                    // If round just ended, clear timer (if not already cleared by round listener)
+                                    if (!newRoundInProgress && currentRoundData.status === 'completed') {
+                                        if (timerInterval) {
+                                            clearInterval(timerInterval);
+                                            timerInterval = null;
+                                        }
+                                        if (serverSyncInterval && typeof serverSyncInterval === 'function') {
+                                            serverSyncInterval();
+                                            serverSyncInterval = null;
+                                        }
+                                        document.getElementById('roundTimer').textContent = '';
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('Error reloading round data:', error);
+                            }
+                        }
+                        
+                        updateRoundHeader();
+                        
+                        // Refresh leaderboard in case round status changed
+                        if (cachedPlayers.length > 0) {
+                            displayLeaderboard(cachedPlayers);
+                        }
+                    }
+                }
+            }, (error) => {
+                console.error('Error in tournament listener:', error);
+            });
+        }
+
+        // Load historical participants once (players who were deleted but participated)
+        async function loadHistoricalParticipants() {
+            const historicalPlayers = [];
+            const historicalPlayerIds = new Set();
+            
+            try {
+                const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
+                
+                for (const roundDoc of roundsSnap.docs) {
+                    const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundDoc.id, 'participants'));
+                    
+                    participantsSnap.forEach((participantDoc) => {
+                        const participantData = participantDoc.data();
+                        const playerId = participantData.playerId;
+                        
+                        // Track this participant (use latest data if seen multiple times)
+                        if (!historicalPlayerIds.has(playerId)) {
+                            historicalPlayerIds.add(playerId);
+                            historicalPlayers.push({
+                                id: playerId,
+                                name: participantData.name,
+                                wins: participantData.wins || 0,
+                                points: participantData.points || 0,
+                                lastWinAt: participantData.lastWinAt,
+                                tableId: null,
+                                position: null,
+                                eliminated: true,
+                                eliminatedInRound: roundDoc.data().roundNumber,
+                                isHistorical: true
+                            });
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading historical participants:', error);
+            }
+            
+            return historicalPlayers;
+        }
+
+        async function setupPlayersListener() {
+            // Load historical participants ONCE (not on every update)
+            historicalPlayersCache = await loadHistoricalParticipants();
+            
+            // Get all current tournament players
+            const playersRef = collection(db, 'tournaments', currentTournamentId, 'players');
+            
+            // Real-time listener for live player updates
+            onSnapshot(playersRef, (snapshot) => {
+                const players = [];
+                const currentPlayerIds = new Set();
+                
+                // Get current players from snapshot
+                snapshot.forEach((doc) => {
+                    const playerData = { id: doc.id, ...doc.data() };
+                    players.push(playerData);
+                    currentPlayerIds.add(doc.id);
+                });
+
+                // Add cached historical participants that aren't in current players
+                historicalPlayersCache.forEach(historicalPlayer => {
+                    if (!currentPlayerIds.has(historicalPlayer.id)) {
+                        players.push(historicalPlayer);
+                    }
+                });
+
+                cachedPlayers = players; // Cache for client-side updates
+                displayLeaderboard(players);
+                displayStats(players);
+            });
+        }
+        
+        // Update "Last Win" times every 30 seconds (client-side only)
+        setInterval(() => {
+            if (cachedPlayers.length > 0) {
+                displayLeaderboard(cachedPlayers);
+            }
+        }, 30000); // 30 seconds
+
+        // Track previous wins and flash expiry times
+        let previousWins = {};
+        let flashExpiryTimes = {};
+        let lossExpiryTimes = {};
+        let cachedPlayers = []; // Store latest player data for client-side updates
+        let isFirstLoad = true; // Skip flash detection on initial load
+        
+        function displayLeaderboard(players) {
+            if (players.length === 0) {
+                document.getElementById('leaderboardBody').innerHTML = 
+                    '<div class="empty-state">No players registered yet.</div>';
+                return;
+            }
+
+            // Get all players (we'll display them all together)
+            let activePlayers = players.filter(p => !p.eliminated);
+            const eliminatedPlayers = players.filter(p => p.eliminated);
+
+            const now = Date.now();
+
+            // Detect wins/losses and mark players (skip on first load)
+            activePlayers.forEach(player => {
+                const currentWins = player.wins || 0;
+                const prevWins = previousWins[player.id];
+                
+                // Only detect changes if we have previous data (not first load)
+                if (!isFirstLoad && prevWins !== undefined) {
+                    if (currentWins > prevWins) {
+                        // New win detected! Set flash expiry time
+                        flashExpiryTimes[player.id] = now + 10000; // 10 seconds from now
+                        delete lossExpiryTimes[player.id]; // Clear any loss flash
+                    } else if (currentWins < prevWins) {
+                        // Loss detected! Set loss flash expiry time
+                        lossExpiryTimes[player.id] = now + 10000; // 10 seconds from now
+                        delete flashExpiryTimes[player.id]; // Clear any win flash
+                    }
+                }
+                
+                // Check if win flash is still active
+                if (flashExpiryTimes[player.id] && flashExpiryTimes[player.id] > now) {
+                    player.hasRecentWin = true;
+                } else {
+                    player.hasRecentWin = false;
+                    if (flashExpiryTimes[player.id]) {
+                        delete flashExpiryTimes[player.id];
+                    }
+                }
+                
+                // Check if loss flash is still active
+                if (lossExpiryTimes[player.id] && lossExpiryTimes[player.id] > now) {
+                    player.hasRecentLoss = true;
+                } else {
+                    player.hasRecentLoss = false;
+                    if (lossExpiryTimes[player.id]) {
+                        delete lossExpiryTimes[player.id];
+                    }
+                }
+                
+                // Update tracked wins
+                previousWins[player.id] = currentWins;
+            });
+            
+            // After first render, we can start detecting wins
+            if (isFirstLoad) {
+                isFirstLoad = false;
+            }
+
+            // Calculate round wins for each player
+            activePlayers.forEach(player => {
+                const roundStart = roundParticipants[player.id]?.wins || 0;
+                player.roundWins = (player.wins || 0) - roundStart;
+            });
+            
+            // Check if any player has wins yet
+            const hasAnyWins = activePlayers.some(p => (p.wins || 0) > 0);
+            
+            // Sort active players
+            if (!hasAnyWins) {
+                // No wins recorded yet - sort alphabetically by name
+                activePlayers.sort((a, b) => a.name.localeCompare(b.name));
+            } else {
+                // At least one win exists - sort by performance using shared function
+                activePlayers = sortPlayersForLeaderboard(activePlayers, roundParticipants);
+            }
+            
+            // Sort eliminated players by elimination round, then by wins
+            eliminatedPlayers.sort((a, b) => {
+                if (b.eliminatedInRound !== a.eliminatedInRound) {
+                    return (b.eliminatedInRound || 0) - (a.eliminatedInRound || 0);
+                }
+                return (b.wins || 0) - (a.wins || 0);
+            });
+
+            // Calculate golf-style positions (ties get same rank) for active players
+            const playersWithPositions = [];
+            
+            if (!hasAnyWins) {
+                // No wins recorded yet - everyone tied at rank 1, alphabetical order
+                activePlayers.forEach(player => {
+                    playersWithPositions.push({ ...player, rank: 1 });
+                });
+            } else {
+                // At least one win exists - calculate rankings
+                let currentRank = 1;
+                
+                for (let i = 0; i < activePlayers.length; i++) {
+                    const player = activePlayers[i];
+                    const playerWins = player.wins || 0;
+                    
+                    // If this player has same wins as previous, they get same rank
+                    if (i > 0 && playerWins === (activePlayers[i - 1].wins || 0)) {
+                        playersWithPositions.push({ ...player, rank: playersWithPositions[i - 1].rank });
+                    } else {
+                        playersWithPositions.push({ ...player, rank: currentRank });
+                    }
+                    
+                    currentRank = i + 2; // Next available rank (golf scoring)
+                }
+            }
+            
+            // Add eliminated and historical players to the same list (no rank, will show as "-")
+            eliminatedPlayers.forEach(player => {
+                playersWithPositions.push({ ...player, rank: null });
+            });
+
+            // Calculate movement indicators
+            const newPositions = {};
+            playersWithPositions.forEach((player) => {
+                newPositions[player.id] = player.rank;
+            });
+
+            // Helper to format time since last win
+            const formatTimeSince = (timestamp) => {
+                if (!timestamp) return '—';
+                
+                const now = Date.now();
+                const then = timestamp.toMillis();
+                const diffMs = now - then;
+                
+                const totalMinutes = Math.floor(diffMs / (1000 * 60));
+                
+                return `${totalMinutes}min ago`;
+            };
+            
+            const renderPlayer = (player, rank = null, isEliminated = false) => {
+                const rankClass = rank && rank <= 3 ? `rank-${rank}` : '';
+                
+                // Only show table info for active players
+                const tableName = (!isEliminated && player.tableId) 
+                    ? `Table ${tablesData[player.tableId]?.tableNumber || '?'} - ${player.position || '?'}`
+                    : '';
+
+                // Calculate movement for active players
+                let movementIndicator = '';
+                if (!isEliminated && rank && previousPositions[player.id] !== undefined && previousPositions[player.id] !== rank) {
+                    if (previousPositions[player.id] > rank) {
+                        movementIndicator = '<span class="movement-up">▲</span>';
+                    } else {
+                        movementIndicator = '<span class="movement-down">▼</span>';
+                    }
+                }
+                
+                const rowStyle = isEliminated ? 'opacity: 0.5; background: #fee2e2;' : '';
+                const displayRank = isEliminated ? (player.isHistorical ? '—' : `R${player.eliminatedInRound}`) : rank;
+                const flashClass = player.hasRecentWin ? 'recent-win' : player.hasRecentLoss ? 'recent-loss' : '';
+                
+                const roundWins = player.roundWins || 0;
+                const timeSince = formatTimeSince(player.lastWinAt);
+
+                return `
+                    <div class="leaderboard-row ${flashClass}" style="${rowStyle}">
+                        <div class="rank ${rankClass}">${displayRank} ${movementIndicator}</div>
+                        <div class="player-info">
+                            <div class="player-name">${player.name}</div>
+                            <div class="player-table">${tableName}</div>
+                        </div>
+                        <div class="total-wins">${player.wins || 0}</div>
+                        <div class="round-wins">${roundWins}</div>
+                        <div class="time-since">${timeSince}</div>
+                    </div>
+                `;
+            };
+
+            // Calculate projected cut line for cut line tournaments
+            let cutLinePosition = -1;
+            if (currentTournamentData?.type === 'cutline' && 
+                currentTournamentData.roundInProgress && 
+                currentTournamentData.currentRound < (currentTournamentData.totalRounds || 0)) {
+                
+                const allPlayers = players.filter(p => !p.isHistorical); // Include eliminated for original count
+                const originalCount = allPlayers.length;
+                const currentRound = currentTournamentData.currentRound || 0;
+                const totalRounds = currentTournamentData.totalRounds || 0;
+                
+                // Use shared cut line calculation (same as admin panel)
+                const { targetRemaining } = calculateCutLineTarget(
+                    originalCount,
+                    currentRound,
+                    totalRounds,
+                    activePlayers // Already sorted best-to-worst for leaderboard display
+                );
+                
+                // Cut line is at position: after targetRemaining players (to keep top players)
+                const numToCut = activePlayers.length - targetRemaining;
+                if (numToCut > 0 && numToCut < activePlayers.length) {
+                    cutLinePosition = targetRemaining; // Insert cut line after this many KEPT players
+                }
+            }
+            
+            // Determine number of columns (2-3 columns for desktop, 1 for mobile)
+            const totalPlayers = playersWithPositions.length; // Includes active + eliminated + historical
+            const numColumns = totalPlayers > 30 ? 3 : totalPlayers > 15 ? 2 : 1;
+            const playersPerColumn = Math.ceil(totalPlayers / numColumns);
+            
+            // Build columns with top-to-bottom, left-to-right flow
+            let columnsHTML = `<div class="leaderboard-columns cols-${numColumns}">`;
+            
+            for (let col = 0; col < numColumns; col++) {
+                columnsHTML += '<div class="leaderboard-column">';
+                
+                // Add header for each column
+                columnsHTML += `
+                    <div class="leaderboard-header">
+                        <div>Rank</div>
+                        <div>Player</div>
+                        <div>Total</div>
+                        <div>Round</div>
+                        <div>Last Win</div>
+                    </div>
+                `;
+                
+                // Fill this column top to bottom
+                for (let row = 0; row < playersPerColumn; row++) {
+                    const playerIndex = col * playersPerColumn + row;
+                    
+                    if (playerIndex < totalPlayers) {
+                        const player = playersWithPositions[playerIndex];
+                        const isEliminated = player.eliminated || player.isHistorical;
+                        columnsHTML += renderPlayer(player, player.rank, isEliminated);
+                        
+                        // Insert cut line after this player if they're at the cut position
+                        // Only show cut line after active players (before eliminated section)
+                        if (cutLinePosition > 0 && playerIndex === cutLinePosition - 1) {
+                            columnsHTML += `
+                                <div class="cut-line" style="padding: 12px 15px; margin: 8px 0;">
+                                    ⚠️ PROJECTED CUT LINE ⚠️
+                                </div>
+                            `;
+                        }
+                    }
+                }
+                
+                columnsHTML += '</div>';
+            }
+            
+            columnsHTML += '</div>';
+
+            document.getElementById('leaderboardBody').innerHTML = columnsHTML;
+            
+            // Update previous positions for next comparison
+            previousPositions = newPositions;
+        }
+
+        function displayStats(players) {
+            const activePlayers = players.filter(p => !p.eliminated && !p.isHistorical);
+            const totalPlayers = players.length;
+            const totalWins = players.reduce((sum, p) => sum + (p.wins || 0), 0);
+            const totalPoints = players.reduce((sum, p) => sum + (p.points || 0), 0);
+
+            document.getElementById('statsContainer').innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-value">${activePlayers.length}</div>
+                    <div class="stat-label">Active Players</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${totalPlayers}</div>
+                    <div class="stat-label">Total Participants</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${totalWins}</div>
+                    <div class="stat-label">Total Wins</div>
+                </div>
+            `;
+        }
+
+        loadTournaments();
+    </script>
+</body>
+</html>
+

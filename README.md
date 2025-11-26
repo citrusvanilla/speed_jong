@@ -1,144 +1,190 @@
-# Speed Jong Timer
+# Speed Jong Timer ⏱️🀄
 
-A minimalist countdown timer designed for Speed Jong (Mahjong) games with clean visual feedback and animated effects.
+A modern, multi-directional countdown timer for Speed Mahjong games with tournament management capabilities.
 
 ## Features
 
-### Timer & Display
-- ⏱️ **Configurable countdown timer** (3-10 seconds, with "hard mode" 3-second option)
-- 🎯 **Large centered timer** with smooth countdown
-- 🥧 **Full-screen pie wipe animation** - White circle depletes clockwise as time runs out
-- 🌈 **Dynamic color transitions** from green → yellow → orange → red (aggressive curve for urgency)
-- 💾 **Settings persistence** - Timer duration and sound preferences saved locally
+### 🎮 **Practice Mode**
+- Customizable timer duration (3-10 seconds)
+- Multi-directional visual countdown
+- Optional sound effects (tick, reset, timeout)
+- Tap anywhere to reset
+- Retro 8-bit design with animations
 
-### Visual Feedback
-- ⚡ **Pikachu tap animation** - Happy Pikachu appears at tap location, oriented towards center
-- 🐟 **Magikarp timeout animation** - Appears when timer hits zero
-- 🔴 **Flashing red background** when timer expires
-- 📱 **Responsive design** optimized for desktop, tablet, and mobile
+### 🏆 **Tournament Mode**
+- Firebase-backed real-time tournament system
+- Table-based player assignments (4 players per table)
+- Live leaderboard with golf-style ranking
+- Round management (standard & cut line tournaments)
+- Automatic or manual table assignments
+- Real-time score tracking across multiple tables
 
-### Audio
-- 🔊 **Optional tick sounds** (disabled by default) - Plays every second
-- 🎵 **Reset confirmation beep** - Two-tone chime when starting/resetting timer
-- ⚠️ **Timeout alert sound** - Descending buzz when time expires
-- 🔇 Individual toggles for tick, reset, and timeout sounds
-- 🎹 All sounds generated using Web Audio API (8-bit retro style)
+## Quick Start
 
-### Interaction
-- 👆 **Tap anywhere** to reset timer during countdown
-- 🚀 **Ready state** - START GAME button leads to 0.0 ready screen, then tap to begin
-- 🚫 **250ms tap debounce** to prevent accidental double-taps
-- 📱 **Wake lock** keeps screen active during gameplay
-- 🔄 **On-screen instructions** appear in different game states
+### Local Development
 
-## How to Play
+1. **Clone the repository**
+   ```bash
+   cd /path/to/spped_jong
+   ```
 
-### Initial Setup
-1. Open `index.html` in a web browser
-2. Configure your preferred timer duration (default: 5 seconds)
-3. Toggle sounds on/off individually (tick sound off by default)
-4. Enable "Do Not Disturb" mode on your phone
-5. Click "READY"
+2. **Start a local server**
+   ```bash
+   python3 -m http.server 8000
+   ```
 
-### During Game
-1. **Ready state** - Screen shows "North taps anywhere to start when East is ready!"
-2. **Tap to start** - Countdown begins with pie wipe animation
-3. **Screen color changes** gradually as time runs out (green → red)
-4. **Tap anywhere** to reset the timer back to starting value
-   - Pikachu animation appears at tap location
-   - Reset sound plays (if enabled)
-5. **Timer reaches 0.0:**
-   - Magikarp animation appears
-   - Background flashes red continuously
-   - Instructions appear: "Tap anywhere to reset timer. Reload to change settings."
-6. **Tap to restart** the countdown
+3. **Open in browser**
+   ```
+   http://localhost:8000
+   ```
 
-### Changing Settings
-- Reload the page to access the settings screen
-- Adjust timer duration (3-10 seconds)
-- Toggle tick, reset, and timeout sounds individually
-
-## Running the App
-
-### Option 1: Direct File Open
-Simply double-click `index.html` or open it in your browser.
-
-### Option 2: Local Server (Recommended)
-For best wake lock functionality, serve via HTTP:
-
-```bash
-# Using Python
-python3 -m http.server 8000
-
-# Using Node.js (if you have npx)
-npx serve
-
-# Using PHP
-php -S localhost:8000
-```
-
-Then visit `http://localhost:8000` in your browser.
-
-### Option 3: PWA (Progressive Web App)
-For true fullscreen experience on mobile:
-1. Open the app in Safari (iOS) or Chrome (Android)
-2. Tap "Share" → "Add to Home Screen"
-3. Launch from home screen for fullscreen mode without browser UI
-
-## Technical Details
-
-### Display
-- **Timer text:** 20vmin font size (responsive)
-- **Pie wipe:** Full-screen SVG animation with 500-unit radius
-- **Centered layout** with text using `mix-blend-mode: difference` for visibility
-- **Retro font:** Press Start 2P (local, no external requests)
-
-### Audio Frequencies (8-bit Style)
-- **Tick sound:** 800 Hz square wave, 50ms duration
-- **Reset chime:** 600 Hz → 800 Hz, 100ms duration
-- **Timeout buzz:** 400 Hz → 200 Hz descending, 500ms duration
-
-### Browser Compatibility
-- Wake Lock API requires HTTPS or localhost
-- Works best on Chrome, Edge, and Safari (iOS 16.4+)
-- Touch events optimized for mobile devices
-- All resources loaded locally (no network dependencies)
-
-## Technologies Used
-
-- **HTML5** - Semantic markup
-- **CSS3** - Responsive design, animations, SVG styling
-- **Vanilla JavaScript** - No frameworks or dependencies
-- **Web Audio API** - Real-time sound generation
-- **Wake Lock API** - Screen management
-- **LocalStorage API** - Settings persistence
-- **SVG** - Full-screen pie wipe animation
-
-## File Structure
+### File Structure
 
 ```
 spped_jong/
-├── index.html              # Main HTML structure
-├── style.css               # All styles and animations
-├── script.js               # Game logic, audio, and state management
-├── manifest.json           # PWA configuration
-├── favicon.jpg             # Site icon
-├── mahjong.gif             # Home screen animation
-├── magikarp.gif            # Timeout animation
-├── pickachu_happy.gif      # Tap feedback animation
-├── fonts/
-│   └── PressStart2P-Regular.ttf  # Retro font (local)
-└── README.md               # This file
+├── index.html              # Entry point - mode selection
+├── assets/                 # Images and fonts
+├── css/                    # Stylesheets
+├── js/                     # JavaScript logic
+├── pages/                  # HTML pages
+├── docs/                   # Documentation
+├── dev/                    # Admin tools (Python)
+└── tests/                  # Test files
 ```
+
+See [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md) for detailed file organization.
+
+## Documentation
+
+- **[PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md)** - Complete file structure and organization
+- **[docs/TOURNAMENT-GUIDE.md](docs/TOURNAMENT-GUIDE.md)** - Tournament features and workflows
+- **[dev/README.md](dev/README.md)** - Database admin tools documentation
+
+## Tournament Setup
+
+### Prerequisites
+
+1. Create a Firebase project at [Firebase Console](https://console.firebase.google.com/)
+2. Enable Firestore Database
+3. Update `js/firebase-config.js` with your Firebase credentials
+4. Deploy security rules from `firestore.rules`
+
+### Admin Panel
+
+Access at `/pages/admin.html` to:
+- Create and manage tournaments
+- Register players
+- Create or auto-assign tables
+- Start/end rounds
+- Track tournament progress
+
+### Player Features
+
+- **Table Selection**: `/pages/tournament-select.html`
+- **View Assignment**: `/pages/player-view.html`
+- **Leaderboard**: `/pages/leaderboard.html`
+- **Timer**: `/pages/timer.html?mode=tournament`
+
+## Database Management
+
+Python scripts for Firebase administration:
+
+```bash
+# Install dependencies
+pip install -r dev/requirements.txt
+
+# View database statistics
+python dev/db_stats.py
+
+# Delete all tournaments
+python dev/db_cleanup.py delete-all
+
+# Export backups
+python dev/db_export.py
+```
+
+See [dev/README.md](dev/README.md) for full admin tools documentation.
+
+## Security
+
+- Firebase security rules in `firestore.rules`
+- Service account keys (for admin tools) are gitignored
+- Admin panel has no authentication (add your own if deploying publicly)
+- Read-only Firestore access for public users
+- Write access controlled via security rules
+
+**⚠️ Important**: The admin panel (`pages/admin.html`) has no authentication. For production use, add authentication or restrict access.
+
+## Deployment
+
+### GitHub Pages / Static Hosting
+
+1. Push to GitHub
+2. Enable GitHub Pages on your repository
+3. Deploy from `main` branch, root directory
+
+All paths are relative and will work on any static host.
+
+**Do NOT deploy**:
+- `dev/serviceAccountKey.json`
+- `dev/` folder (contains admin scripts)
+- `tests/` folder (optional, only for development)
+
+### Hosting Recommendations
+
+- ✅ **GitHub Pages** - Free, easy setup
+- ✅ **Netlify** - Auto-deploy from Git
+- ✅ **Vercel** - Fast static hosting
+- ✅ **Firebase Hosting** - Integrated with Firebase backend
+
+## Technology Stack
+
+- **Frontend**: Vanilla HTML/CSS/JavaScript
+- **Backend**: Firebase Firestore (real-time database)
+- **Admin Tools**: Python + Firebase Admin SDK
+- **Fonts**: Press Start 2P (8-bit retro)
+- **PWA**: Manifest for mobile installation
 
 ## Browser Support
 
-- ✅ Chrome/Edge 84+
-- ✅ Safari 16.4+ (iOS/macOS)
-- ✅ Firefox (wake lock not supported, but app works)
-- ⚠️ Older browsers may not support all visual effects
+- ✅ Chrome/Edge (recommended)
+- ✅ Safari (iOS/macOS)
+- ✅ Firefox
+- ⚠️ Requires JavaScript enabled
+- ⚠️ Best experience on mobile devices
+
+## Tournament Types
+
+### Standard Tournament
+- Multiple rounds, players accumulate wins
+- Tables can be reset between rounds
+- No player elimination
+
+### Cut Line Tournament
+- Players eliminated each round based on performance
+- Configurable number of rounds
+- 1/N players cut per round (except final)
+- Golf-style ranking with tie-breaking
+
+## Contributing
+
+This is a personal project, but feel free to fork and adapt for your own use!
+
+## License
+
+MIT License - See LICENSE file for details
+
+## Credits
+
+- **Design Inspiration**: Retro arcade aesthetics
+- **Fonts**: Press Start 2P by CodeMan38
+- **Animations**: Pokémon GIFs (Magikarp, Pikachu)
+- **Mahjong GIF**: Various tile animations
+
+## Support
+
+For issues or questions, open a GitHub issue.
 
 ---
 
-**Optimized for:** 2-4 player Speed Jong (Mahjong) games  
-**Best Experience:** Mobile device in "Do Not Disturb" mode, added to home screen as PWA
+**Made with ❤️ for Speed Mahjong enthusiasts**

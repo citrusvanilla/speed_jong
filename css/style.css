@@ -6,7 +6,7 @@
 /* Import 8-bit retro font */
 @font-face {
     font-family: 'Press Start 2P';
-    src: url('fonts/PressStart2P-Regular.ttf') format('truetype');
+    src: url('../assets/fonts/PressStart2P-Regular.ttf') format('truetype');
     font-weight: normal;
     font-style: normal;
     font-display: swap;
@@ -337,6 +337,153 @@ h1 {
     opacity: 0.9;
 }
 
+/* Tournament Scoring Modal */
+.scoring-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(10px);
+    z-index: 500;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.scoring-modal-content {
+    background: white;
+    border-radius: 20px;
+    padding: 30px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.scoring-modal-header {
+    text-align: center;
+    color: #1f2937;
+    margin-bottom: 25px;
+}
+
+.players-scoring {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.player-score-card {
+    background: #f9fafb;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 15px;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.player-score-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+.player-score-name {
+    font-size: 14px;
+    color: #1f2937;
+    font-weight: 600;
+    margin-bottom: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.player-score-position {
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 10px;
+}
+
+.score-display {
+    font-size: 28px;
+    color: #667eea;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.score-controls {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.score-btn {
+    background: white;
+    border: 2px solid #e5e7eb;
+    color: #1f2937;
+    font-size: 20px;
+    font-weight: bold;
+    width: 50px;
+    height: 50px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.score-btn:active {
+    transform: scale(0.95);
+}
+
+.score-btn.win {
+    background: #10b981;
+    border-color: #059669;
+    color: white;
+}
+
+.score-btn.win:hover {
+    background: #059669;
+}
+
+.score-btn.lose {
+    background: #ef4444;
+    border-color: #dc2626;
+    color: white;
+}
+
+.score-btn.lose:hover {
+    background: #dc2626;
+}
+
+.close-scoring-btn {
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.close-scoring-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.close-scoring-btn:active {
+    transform: translateY(0);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     h1 {
@@ -350,6 +497,10 @@ h1 {
     
     .timer-text {
         font-size: 16vmin;
+    }
+    
+    .players-scoring {
+        grid-template-columns: repeat(2, 1fr);
     }
 }
 
@@ -371,6 +522,30 @@ h1 {
     .note {
         font-size: 0.7rem;
         line-height: 1.5;
+    }
+    
+    .scoring-modal-content {
+        padding: 20px;
+        width: 95%;
+    }
+    
+    .players-scoring {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .player-score-name {
+        font-size: 12px;
+    }
+    
+    .score-display {
+        font-size: 24px;
+    }
+    
+    .score-btn {
+        width: 45px;
+        height: 45px;
+        font-size: 18px;
     }
 }
 
