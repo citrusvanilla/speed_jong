@@ -92,6 +92,194 @@
             text-decoration: underline;
         }
 
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 1rem;
+            margin-top: 30px;
+            width: 100%;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .tournament-btn {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1rem;
+            font-family: 'Press Start 2P', cursive;
+            font-weight: normal;
+            color: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            line-height: 1.5;
+            text-decoration: none;
+            display: block;
+            text-align: center;
+        }
+
+        .tournament-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .tournament-btn:active {
+            transform: translateY(0);
+        }
+
+        #roomCodeEntry {
+            text-align: center;
+            margin-bottom: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #roomCodeInput {
+            padding: 15px 20px;
+            font-size: 1.2rem;
+            border-radius: 12px;
+            border: 3px solid rgba(255,255,255,0.5);
+            background: rgba(255,255,255,0.95);
+            font-family: 'Press Start 2P', cursive;
+            text-align: center;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            max-width: 250px;
+            width: 90%;
+            transition: all 0.2s;
+        }
+
+        #roomCodeInput:focus {
+            outline: none;
+            border-color: white;
+            background: white;
+            box-shadow: 0 0 20px rgba(255,255,255,0.3);
+        }
+
+        #roomCodeInput::placeholder {
+            letter-spacing: 2px;
+            font-size: 0.8rem;
+        }
+
+        #joinButton {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 15px;
+            padding: 1rem;
+            font-size: 1rem;
+            font-family: 'Press Start 2P', cursive;
+            font-weight: normal;
+            color: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            line-height: 1.5;
+        }
+
+        #joinButton:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        #joinButton:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        #joinButton:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #exitButton {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1rem;
+            font-family: 'Press Start 2P', cursive;
+            font-weight: normal;
+            color: white;
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            line-height: 1.5;
+        }
+
+        #exitButton:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(239, 68, 68, 0.3);
+        }
+
+        #exitButton:active {
+            transform: translateY(0);
+        }
+
+        #tournamentName {
+            text-align: center;
+            color: #667eea;
+            font-size: 1.2rem;
+            font-family: 'Press Start 2P', cursive;
+            margin-bottom: 15px;
+            margin-top: 10px;
+            font-weight: bold;
+            line-height: 1.6;
+        }
+
+        #roundInfo {
+            text-align: center;
+            padding: 12px 20px;
+            margin: 0 auto 25px;
+            border-radius: 10px;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 0.7rem;
+            max-width: 300px;
+            display: none;
+        }
+
+        #roundInfo.in-progress {
+            background: #dcfce7;
+            color: #15803d;
+            border: 2px solid #22c55e;
+        }
+
+        #roundInfo.completed {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 2px solid #ef4444;
+        }
+
+        #roundInfo.staging {
+            background: #fef3c7;
+            color: #92400e;
+            border: 2px solid #fbbf24;
+        }
+
+        #roundInfo.no-round {
+            background: #f3f4f6;
+            color: #6b7280;
+            border: 2px solid #9ca3af;
+        }
+
+        #errorMessage {
+            text-align: center;
+            color: #fbbf24;
+            font-size: 0.7rem;
+            font-family: 'Press Start 2P', cursive;
+            margin-top: 10px;
+            min-height: 24px;
+        }
+
         .no-tables {
             background: white;
             border: 2px solid rgba(255, 255, 255, 0.3);
@@ -99,19 +287,8 @@
             padding: 40px;
             text-align: center;
             color: #1f2937;
-            font-size: 16px;
+            font-size: 18px;
             margin-top: 30px;
-            line-height: 1.6;
-        }
-        
-        .table-button.disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-        
-        .table-button.full {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
         }
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -123,18 +300,30 @@
 <body>
     <div class="screen">
         <div class="container">
-            <h1 id="pageTitle">Select Your Table</h1>
+            <h1 id="pageTitle">Enter Room Code</h1>
             
-            <div id="tournamentSelector" style="text-align: center; margin-bottom: 20px;">
-                <select id="tournamentSelect" style="display: none; padding: 10px 15px; font-size: 16px; border-radius: 8px; border: 2px solid rgba(255,255,255,0.5); background: rgba(255,255,255,0.9); font-family: 'Press Start 2P', cursive; font-size: 0.7rem;">
-                    <option value="">Select Tournament...</option>
-                </select>
+            <div id="roomCodeEntry">
+                <input type="text" 
+                       id="roomCodeInput" 
+                       placeholder="XXXX" 
+                       maxlength="4" 
+                       autocomplete="off"
+                       spellcheck="false">
+                <div id="errorMessage"></div>
+                <button id="joinButton">Join Tournament</button>
             </div>
             
-            <div id="tournamentName" style="text-align: center; color: white; font-size: 18px; margin-bottom: 10px;"></div>
+            <div id="tournamentName"></div>
+            <div id="roundInfo"></div>
 
-            <div id="tablesContainer" style="max-height: 60vh; overflow-y: auto; padding-right: 10px;">
+            <div id="tablesContainer" style="max-height: 60vh; overflow-y: auto; padding-right: 10px; display: none;">
                 <div class="loading">Loading tables...</div>
+            </div>
+
+            <div id="tournamentActions" class="button-group" style="display: none;">
+                <a href="#" id="viewAssignmentLink" class="tournament-btn">View Seat Assignment</a>
+                <a href="#" id="leaderboardLink" class="tournament-btn">Leaderboard</a>
+                <button id="exitButton">Exit Tournament</button>
             </div>
 
             <div class="back-link">
@@ -168,209 +357,307 @@
         const db = getFirestore(app);
 
         let currentTournamentId = null;
-        let tournaments = [];
+        let currentTournamentData = null;
 
-        async function loadTournaments() {
-            try {
-                const tournamentsSnap = await getDocs(collection(db, 'tournaments'));
-                
-                if (tournamentsSnap.empty) {
-                    document.getElementById('pageTitle').style.display = 'none';
-                    document.getElementById('tournamentName').style.display = 'none';
-                    document.getElementById('tablesContainer').innerHTML = 
-                        '<div class="no-tables">No tournaments found. Please contact the organizer.</div>';
-                    return;
-                }
+        const roomCodeInput = document.getElementById('roomCodeInput');
+        const joinButton = document.getElementById('joinButton');
+        const exitButton = document.getElementById('exitButton');
+        const errorMessage = document.getElementById('errorMessage');
+        const tablesContainer = document.getElementById('tablesContainer');
+        const tournamentName = document.getElementById('tournamentName');
+        const roundInfo = document.getElementById('roundInfo');
+        const pageTitle = document.getElementById('pageTitle');
+        
+        let tournamentUnsubscribe = null;
 
-                // Load all tournaments, but only show active ones
-                tournaments = [];
-                tournamentsSnap.forEach(doc => {
-                    const data = doc.data();
-                    // Only include active tournaments (not setup or completed)
-                    if (data.status === 'active') {
-                        tournaments.push({ id: doc.id, ...data });
-                    }
-                });
-
-                // If no active tournaments found
-                if (tournaments.length === 0) {
-                    document.getElementById('pageTitle').style.display = 'none';
-                    document.getElementById('tournamentName').style.display = 'none';
-                    document.getElementById('tablesContainer').innerHTML = 
-                        '<div class="no-tables">No active tournaments. Please wait for the organizer to start the tournament.</div>';
-                    return;
-                }
-                
-                // Show elements if there are active tournaments
-                document.getElementById('pageTitle').style.display = 'block';
-                document.getElementById('tournamentName').style.display = 'block';
-
-                // Sort by creation date (most recent first)
-                tournaments.sort((a, b) => {
-                    const aTime = a.createdAt?.toMillis() || 0;
-                    const bTime = b.createdAt?.toMillis() || 0;
-                    return bTime - aTime;
-                });
-
-                // If multiple tournaments, show dropdown selector
-                if (tournaments.length > 1) {
-                    const tournamentSelect = document.getElementById('tournamentSelect');
-                    tournamentSelect.style.display = 'block';
-                    
-                    tournamentSelect.innerHTML = tournaments.map(t => 
-                        `<option value="${t.id}">${t.name} (${t.status})</option>`
-                    ).join('');
-                    
-                    tournamentSelect.addEventListener('change', (e) => {
-                        selectTournament(e.target.value);
-                    });
-                    
-                    // Auto-select first one
-                    tournamentSelect.value = tournaments[0].id;
-                }
-
-                // Load the first/most relevant tournament
-                selectTournament(tournaments[0].id);
-                
-            } catch (error) {
-                console.error('Error loading tournaments:', error);
-                document.getElementById('tablesContainer').innerHTML = 
-                    `<div class="no-tables">Error: ${error.message}</div>`;
-            }
-        }
-
-        function selectTournament(tournamentId) {
-            currentTournamentId = tournamentId;
-            const tournamentData = tournaments.find(t => t.id === tournamentId);
+        // Exit tournament button
+        exitButton.addEventListener('click', () => {
+            // Clear tournament data
+            localStorage.removeItem('tournamentId');
+            localStorage.removeItem('tableId');
+            localStorage.removeItem('tableNumber');
             
-            if (tournamentData) {
-                document.getElementById('tournamentName').textContent = tournamentData.name;
-                loadTables();
-            }
-        }
+            // Return to home
+            window.location.href = '../index.html';
+        });
 
-        async function loadTables() {
+        // Auto-uppercase room code input
+        roomCodeInput.addEventListener('input', (e) => {
+            e.target.value = e.target.value.toUpperCase();
+            errorMessage.textContent = '';
+        });
+
+        // Handle Enter key
+        roomCodeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                joinButton.click();
+            }
+        });
+
+        // Join tournament with room code
+        joinButton.addEventListener('click', async () => {
+            const roomCode = roomCodeInput.value.trim().toUpperCase();
+            
+            // Validate format
+            if (roomCode.length !== 4) {
+                errorMessage.textContent = 'Please enter a 4-character code';
+                return;
+            }
+
+            if (!/^[A-Z0-9]{4}$/.test(roomCode)) {
+                errorMessage.textContent = 'Code must contain only letters and numbers';
+                return;
+            }
+
+            joinButton.disabled = true;
+            joinButton.textContent = 'Joining...';
+            errorMessage.textContent = '';
+
             try {
-                // Check tournament status and current round
-                const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-                if (!tournamentDoc.exists()) {
-                    document.getElementById('tablesContainer').innerHTML = 
-                        '<div class="no-tables">Tournament not found.</div>';
-                    return;
-                }
-                
-                const tournamentData = tournamentDoc.data();
-                const currentRound = tournamentData.currentRound || 0;
-                const roundInProgress = tournamentData.roundInProgress || false;
-                
-                // Check current round status
-                let roundStatus = null;
-                if (currentRound > 0) {
-                    const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
-                    roundsSnap.forEach((roundDoc) => {
-                        const roundData = roundDoc.data();
-                        if (roundData.roundNumber === currentRound) {
-                            roundStatus = roundData.status;
-                        }
-                    });
-                }
-                
-                // Check if selection is allowed (only in staging state)
-                if (currentRound === 0) {
-                    document.getElementById('tablesContainer').innerHTML = 
-                        '<div class="no-tables">⏳ No round started yet.<br><br>Please wait for the organizer to set up the first round.</div>';
-                    return;
-                }
-                
-                if (roundStatus !== 'staging') {
-                    const statusText = roundStatus === 'in_progress' ? 'Round is currently in progress' : 
-                                      roundStatus === 'completed' ? 'Round has ended' : 'Round not ready';
-                    document.getElementById('tablesContainer').innerHTML = 
-                        `<div class="no-tables">🔒 Table selection locked<br><br>${statusText}.<br><br>You can only select tables during the staging phase.</div>`;
-                    return;
-                }
-                
-                // Load all players to check if everyone is assigned
-                const playersRef = collection(db, 'tournaments', currentTournamentId, 'players');
-                const playersSnap = await getDocs(playersRef);
-                
-                const activePlayers = [];
-                const unassignedPlayers = [];
-                playersSnap.forEach((doc) => {
-                    const playerData = doc.data();
-                    if (!playerData.eliminated) {
-                        activePlayers.push({ id: doc.id, ...playerData });
-                        if (!playerData.tableId) {
-                            unassignedPlayers.push(playerData.name);
-                        }
+                // Find tournament by room code (case-insensitive)
+                const tournamentsSnap = await getDocs(collection(db, 'tournaments'));
+                let foundTournament = null;
+
+                tournamentsSnap.forEach((doc) => {
+                    const data = doc.data();
+                    if (data.roomCode?.toUpperCase() === roomCode) {
+                        foundTournament = { id: doc.id, ...data };
                     }
                 });
-                
-                // Check if all players are assigned
-                if (unassignedPlayers.length > 0) {
-                    const playersList = unassignedPlayers.slice(0, 5).join(', ');
-                    const remaining = unassignedPlayers.length > 5 ? ` (and ${unassignedPlayers.length - 5} more)` : '';
-                    document.getElementById('tablesContainer').innerHTML = 
-                        `<div class="no-tables">⚠️ Not all players assigned yet<br><br>Unassigned: ${playersList}${remaining}<br><br>Please wait for the organizer to finish table assignments.</div>`;
+
+                if (!foundTournament) {
+                    errorMessage.textContent = 'Invalid room code';
+                    joinButton.disabled = false;
+                    joinButton.textContent = 'Join Tournament';
                     return;
                 }
+
+                // Check if tournament is active
+                if (foundTournament.status !== 'active') {
+                    errorMessage.textContent = 'Tournament is not active';
+                    joinButton.disabled = false;
+                    joinButton.textContent = 'Join Tournament';
+                    return;
+                }
+
+                // Valid tournament found!
+                currentTournamentId = foundTournament.id;
+                currentTournamentData = foundTournament;
+
+                // Save tournament ID for other pages
+                localStorage.setItem('tournamentId', foundTournament.id);
+
+                // Hide room code entry, show tournament info
+                document.getElementById('roomCodeEntry').style.display = 'none';
+                pageTitle.textContent = 'Select Your Table';
+                tournamentName.textContent = foundTournament.name;
+                tournamentName.style.display = 'block';
+                
+                // Set up real-time tournament listener for round updates
+                setupTournamentListener(foundTournament.id);
+                
+                // Initial round info display
+                updateRoundInfo(foundTournament);
+                
+                // Show and configure tournament-specific links
+                setupTournamentLinks(foundTournament.id);
                 
                 // Load tables
-                const tablesRef = collection(db, 'tournaments', currentTournamentId, 'tables');
-                const tablesSnap = await getDocs(tablesRef);
+                await loadTables();
                 
-                if (tablesSnap.empty) {
-                    document.getElementById('tablesContainer').innerHTML = 
-                        '<div class="no-tables">No tables set up yet. Please wait for the organizer.</div>';
-                    return;
-                }
-
-                const tables = [];
-                tablesSnap.forEach((doc) => {
-                    tables.push({ id: doc.id, ...doc.data() });
-                });
-
-                tables.sort((a, b) => a.tableNumber - b.tableNumber);
-                
-                // Only show tables with full assignment (4 players) and active status
-                const fullTables = tables.filter(t => 
-                    t.active !== false && 
-                    t.players && 
-                    t.players.length === 4
-                );
-                
-                if (fullTables.length === 0) {
-                    document.getElementById('tablesContainer').innerHTML = 
-                        '<div class="no-tables">⚠️ No tables ready yet<br><br>Tables must have exactly 4 players assigned.<br><br>Please wait for the organizer to complete table assignments.</div>';
-                    return;
-                }
-
-                const tablesHTML = fullTables.map(table => `
-                    <button class="table-button full" onclick="selectTable('${table.id}', ${table.tableNumber})">
-                        <div class="table-number">${table.tableNumber}</div>
-                        <div class="table-label">✓ Ready (4/4)</div>
-                    </button>
-                `).join('');
-
-                document.getElementById('tablesContainer').innerHTML = `
-                    <div class="table-grid">${tablesHTML}</div>
-                `;
-
-                // Make selectTable globally accessible
-                window.selectTable = (tableId, tableNumber) => {
-                    localStorage.setItem('tournamentId', currentTournamentId);
-                    localStorage.setItem('tableId', tableId);
-                    localStorage.setItem('tableNumber', tableNumber);
-                    window.location.href = 'timer.html?mode=tournament';
-                };
             } catch (error) {
-                console.error('Error loading tables:', error);
-                document.getElementById('tablesContainer').innerHTML = 
+                console.error('Error joining tournament:', error);
+                errorMessage.textContent = 'Error: ' + error.message;
+                joinButton.disabled = false;
+                joinButton.textContent = 'Join Tournament';
+            }
+        });
+
+        // Function to update round info display
+        async function updateRoundInfo(tournamentData) {
+            const currentRound = tournamentData.currentRound || 0;
+            const roundInProgress = tournamentData.roundInProgress || false;
+            
+            if (currentRound === 0) {
+                roundInfo.style.display = 'block';
+                roundInfo.className = 'no-round';
+                roundInfo.textContent = 'No rounds started';
+                return;
+            }
+            
+            roundInfo.style.display = 'block';
+            
+            // Fetch the actual round document to get its status
+            try {
+                const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
+                let roundStatus = null;
+                
+                roundsSnap.forEach(roundDoc => {
+                    const roundData = roundDoc.data();
+                    if (roundData.roundNumber === currentRound) {
+                        roundStatus = roundData.status;
+                    }
+                });
+                
+                // Determine state based on round status
+                if (roundStatus === 'staging') {
+                    roundInfo.className = 'staging';
+                    roundInfo.textContent = `Round ${currentRound} - PREPARING`;
+                } else if (roundStatus === 'in_progress') {
+                    roundInfo.className = 'in-progress';
+                    roundInfo.textContent = `Round ${currentRound} - IN PROGRESS`;
+                } else if (roundStatus === 'completed') {
+                    roundInfo.className = 'completed';
+                    roundInfo.textContent = `Round ${currentRound} - COMPLETED`;
+                } else {
+                    // No round document found, use roundInProgress flag as fallback
+                    if (roundInProgress) {
+                        roundInfo.className = 'in-progress';
+                        roundInfo.textContent = `Round ${currentRound} - IN PROGRESS`;
+                    } else {
+                        roundInfo.className = 'staging';
+                        roundInfo.textContent = `Round ${currentRound} - PREPARING`;
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching round status:', error);
+                // Fallback to simple display
+                roundInfo.className = roundInProgress ? 'in-progress' : 'staging';
+                roundInfo.textContent = `Round ${currentRound}${roundInProgress ? ' - IN PROGRESS' : ' - PREPARING'}`;
+            }
+        }
+
+        // Function to setup tournament listener
+        function setupTournamentListener(tournamentId) {
+            // Unsubscribe from previous listener if any
+            if (tournamentUnsubscribe) {
+                tournamentUnsubscribe();
+            }
+            
+            // Set up real-time listener for tournament changes
+            tournamentUnsubscribe = onSnapshot(doc(db, 'tournaments', tournamentId), async (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    currentTournamentData = { id: tournamentId, ...data };
+                    
+                    // Update round info (async)
+                    await updateRoundInfo(data);
+                    
+                    // Check if tournament is still active
+                    if (data.status !== 'active') {
+                        // Tournament is no longer active
+                        errorMessage.textContent = 'Tournament is no longer active';
+                        errorMessage.style.color = '#ef4444';
+                    }
+                }
+            });
+        }
+
+        // Function to setup tournament-specific links
+        function setupTournamentLinks(tournamentId) {
+            const tournamentActionsDiv = document.getElementById('tournamentActions');
+            const viewAssignmentLink = document.getElementById('viewAssignmentLink');
+            const leaderboardLink = document.getElementById('leaderboardLink');
+            
+            // Set up links to pass tournament ID
+            viewAssignmentLink.href = `player-view.html?tournament=${tournamentId}`;
+            leaderboardLink.href = `leaderboard.html?tournament=${tournamentId}`;
+            
+            // Show the entire button group
+            tournamentActionsDiv.style.display = 'flex';
+        }
+
+        // Check if we already have a tournament ID stored
+        const savedTournamentId = localStorage.getItem('tournamentId');
+        if (savedTournamentId) {
+            // Auto-load if we have a saved tournament
+            getDoc(doc(db, 'tournaments', savedTournamentId))
+                .then((docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        if (data.status === 'active') {
+                            currentTournamentId = savedTournamentId;
+                            currentTournamentData = { id: savedTournamentId, ...data };
+                            document.getElementById('roomCodeEntry').style.display = 'none';
+                            pageTitle.textContent = 'Select Your Table';
+                            tournamentName.textContent = data.name;
+                            tournamentName.style.display = 'block';
+                            setupTournamentListener(savedTournamentId);
+                            updateRoundInfo(data);
+                            setupTournamentLinks(savedTournamentId);
+                            loadTables();
+                        }
+                    }
+                })
+                .catch((error) => {
+                    console.error('Error loading saved tournament:', error);
+                });
+        }
+
+        function loadTables() {
+            try {
+                tablesContainer.style.display = 'block';
+                
+                const tablesRef = collection(db, 'tournaments', currentTournamentId, 'tables');
+                
+                // Set up real-time listener for table changes
+                onSnapshot(tablesRef, (snapshot) => {
+                    if (snapshot.empty) {
+                        tablesContainer.innerHTML = 
+                            '<div class="no-tables">No tables set up yet. Please wait for the organizer.</div>';
+                        return;
+                    }
+
+                    const tables = [];
+                    snapshot.forEach((doc) => {
+                        const tableData = { id: doc.id, ...doc.data() };
+                        // Only show tables with exactly 4 players assigned
+                        const playerCount = tableData.players ? tableData.players.length : 0;
+                        if (playerCount === 4) {
+                            tables.push(tableData);
+                        }
+                    });
+
+                    if (tables.length === 0) {
+                        tablesContainer.innerHTML = 
+                            '<div class="no-tables">No tables ready yet. Tables will appear when they have 4 players assigned.</div>';
+                        return;
+                    }
+
+                    tables.sort((a, b) => a.tableNumber - b.tableNumber);
+
+                    const tablesHTML = tables.map(table => `
+                        <button class="table-button" onclick="selectTable('${table.id}', ${table.tableNumber})">
+                            <div class="table-number">${table.tableNumber}</div>
+                            <div class="table-label">Table</div>
+                        </button>
+                    `).join('');
+
+                    tablesContainer.innerHTML = `
+                        <div class="table-grid">${tablesHTML}</div>
+                    `;
+
+                    // Make selectTable globally accessible
+                    window.selectTable = (tableId, tableNumber) => {
+                        localStorage.setItem('tournamentId', currentTournamentId);
+                        localStorage.setItem('tableId', tableId);
+                        localStorage.setItem('tableNumber', tableNumber);
+                        window.location.href = 'timer.html?mode=tournament';
+                    };
+                }, (error) => {
+                    console.error('Error loading tables:', error);
+                    tablesContainer.innerHTML = 
+                        `<div class="no-tables">Error: ${error.message}</div>`;
+                });
+            } catch (error) {
+                console.error('Error setting up tables listener:', error);
+                tablesContainer.innerHTML = 
                     `<div class="no-tables">Error: ${error.message}</div>`;
             }
         }
 
-        loadTournaments();
+        // Focus on room code input on load
+        roomCodeInput.focus();
     </script>
 </body>
 </html>

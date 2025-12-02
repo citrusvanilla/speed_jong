@@ -166,6 +166,31 @@
                 font-size: 48px;
             }
         }
+
+        /* Toast notification styles */
+        .player-toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            font-size: 16px;
+            line-height: 1.5;
+            max-width: 90%;
+            text-align: center;
+            z-index: 10000;
+            opacity: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .player-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
     </style>
 </head>
 <body>
@@ -183,7 +208,7 @@
         </div>
 
         <div class="timer-link">
-            <a href="../index.html">🎮 Launch Timer</a>
+            <a href="tournament-select.html">← Back to Tournament</a>
         </div>
     </div>
 
@@ -220,9 +245,39 @@
         let playersData = {};
         let tablesData = {};
 
-        // Load most recent tournament
-        async function loadLatestTournament() {
+        // Get tournament ID from URL params or localStorage
+        function getTournamentId() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tournamentFromUrl = urlParams.get('tournament');
+            
+            if (tournamentFromUrl) {
+                return tournamentFromUrl;
+            }
+            
+            // Fall back to localStorage
+            return localStorage.getItem('tournamentId');
+        }
+
+        // Load specific tournament or find most recent
+        async function loadTournament() {
             try {
+                const specificTournamentId = getTournamentId();
+                
+                // If we have a specific tournament ID, try to load it
+                if (specificTournamentId) {
+                    const tournamentDoc = await getDoc(doc(db, 'tournaments', specificTournamentId));
+                    
+                    if (tournamentDoc.exists()) {
+                        const data = tournamentDoc.data();
+                        if (data.status === 'active') {
+                            currentTournamentId = specificTournamentId;
+                            loadPlayers();
+                            return;
+                        }
+                    }
+                }
+                
+                // Otherwise, find most recent active tournament
                 const tournamentsSnap = await getDocs(collection(db, 'tournaments'));
                 
                 if (tournamentsSnap.empty) {
@@ -280,18 +335,10 @@
                 option.textContent = doc.data().name;
                 playerSelect.appendChild(option);
             });
-
-            // Restore saved selection
-            const savedPlayerId = localStorage.getItem('selectedPlayerId');
-            if (savedPlayerId && playersData[savedPlayerId]) {
-                playerSelect.value = savedPlayerId;
-                selectPlayer(savedPlayerId);
-            }
         }
 
         document.getElementById('playerSelect').addEventListener('change', (e) => {
             if (e.target.value) {
-                localStorage.setItem('selectedPlayerId', e.target.value);
                 selectPlayer(e.target.value);
             }
         });
@@ -313,7 +360,21 @@
                     const tableDoc = await getDoc(tableRef);
                     
                     if (tableDoc.exists()) {
-                        displayAssignment(playerData, tableDoc.data());
+                        const tableData = tableDoc.data();
+                        
+                        // Load all players at this table
+                        if (tableData.players && tableData.players.length > 0) {
+                            for (const tablePlayerId of tableData.players) {
+                                if (!playersData[tablePlayerId]) {
+                                    const otherPlayerDoc = await getDoc(doc(db, 'tournaments', currentTournamentId, 'players', tablePlayerId));
+                                    if (otherPlayerDoc.exists()) {
+                                        playersData[tablePlayerId] = { id: tablePlayerId, ...otherPlayerDoc.data() };
+                                    }
+                                }
+                            }
+                        }
+                        
+                        displayAssignment(playerData, tableData);
                     }
                 } else {
                     displayNotAssigned();
@@ -330,9 +391,21 @@
             const otherPlayers = (tableData.players || [])
                 .filter(id => id !== currentPlayerId)
                 .map(id => {
-                    const player = playersData[id] || { name: 'Loading...' };
-                    const pos = tableData.positions[id];
-                    return { name: player.name, position: pos, symbol: windSymbols[pos] };
+                    const player = playersData[id] || { name: 'Loading...', position: null };
+                    
+                    // Find position by checking which key in tableData.positions has this player ID
+                    let pos = player.position; // Fallback to player's position
+                    if (tableData.positions) {
+                        for (const [position, playerId] of Object.entries(tableData.positions)) {
+                            if (playerId === id) {
+                                pos = position;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    const symbol = windSymbols[pos] || '';
+                    return { name: player.name, position: pos || 'Unknown', symbol: symbol };
                 });
 
             const otherPlayersHTML = otherPlayers.map(p => `
@@ -373,8 +446,11 @@
         }
 
         // Initialize
-        loadLatestTournament();
+        loadTournament();
     </script>
+    
+    <!-- Toast Container -->
+    <div id="toastContainer" style="position: fixed; top: 20px; right: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; max-width: 350px;"></div>
 </body>
 </html>
 

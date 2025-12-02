@@ -160,6 +160,46 @@ h1 {
     transform: translateY(0);
 }
 
+/* Round Info Badge on Timer Config */
+.round-info-badge {
+    text-align: center;
+    padding: 12px 20px;
+    margin: 0 auto 15px;
+    border-radius: 10px;
+    font-family: 'Press Start 2P', cursive;
+    font-size: 0.7rem;
+    max-width: 300px;
+    display: none;
+}
+
+.round-info-badge.in-progress {
+    background: #dcfce7;
+    color: #15803d;
+    border: 2px solid #22c55e;
+    display: block;
+}
+
+.round-info-badge.completed {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 2px solid #ef4444;
+    display: block;
+}
+
+.round-info-badge.staging {
+    background: #fef3c7;
+    color: #92400e;
+    border: 2px solid #fbbf24;
+    display: block;
+}
+
+.round-info-badge.no-round {
+    background: #f3f4f6;
+    color: #6b7280;
+    border: 2px solid #9ca3af;
+    display: block;
+}
+
 /* Game Screen */
 #gameScreen {
     background-color: #4ade80;

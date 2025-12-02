@@ -7,10 +7,40 @@ Quickly create a new tournament via command line
 from setup_firebase import init_firebase
 from firebase_admin import firestore
 import sys
+import random
+import string
+
+def generate_room_code():
+    """Generate a unique 4-character room code"""
+    # All alphanumeric characters allowed
+    chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    return ''.join(random.choice(chars) for _ in range(4))
+
+def is_room_code_unique(db, room_code):
+    """Check if room code already exists (case-insensitive)"""
+    room_code_upper = room_code.upper()
+    tournaments = db.collection('tournaments').get()
+    for tournament in tournaments:
+        existing_code = tournament.to_dict().get('roomCode', '')
+        if existing_code.upper() == room_code_upper:
+            return False
+    return True
+
+def generate_unique_room_code(db):
+    """Generate a unique room code"""
+    max_attempts = 20
+    for _ in range(max_attempts):
+        room_code = generate_room_code()
+        if is_room_code_unique(db, room_code):
+            return room_code
+    raise Exception('Failed to generate unique room code after 20 attempts')
 
 def create_tournament(name, tournament_type='standard', timer_duration=5, max_players=0, total_rounds=0):
     """Create a new tournament"""
     db = init_firebase()
+    
+    # Generate unique room code
+    room_code = generate_unique_room_code(db)
     
     tournament_data = {
         'name': name,
@@ -18,6 +48,7 @@ def create_tournament(name, tournament_type='standard', timer_duration=5, max_pl
         'timerDuration': timer_duration,
         'maxPlayers': max_players,
         'totalRounds': total_rounds,
+        'roomCode': room_code,
         'status': 'staging',
         'currentRound': 0,
         'roundInProgress': False,
@@ -30,12 +61,14 @@ def create_tournament(name, tournament_type='standard', timer_duration=5, max_pl
     print(f"   Max Players: {max_players if max_players > 0 else 'Unlimited'}")
     if tournament_type == 'cutline' and total_rounds > 0:
         print(f"   Total Rounds: {total_rounds}")
+    print(f"   Room Code: {room_code}")
     
     tournament_ref = db.collection('tournaments').document()
     tournament_ref.set(tournament_data)
     
     print(f"\n✅ Tournament created!")
     print(f"   ID: {tournament_ref.id}")
+    print(f"   Room Code: {room_code}")
     print(f"\nUse this ID to import players:")
     print(f"   python db_bulk_import.py import {tournament_ref.id} players.csv")
     print("")

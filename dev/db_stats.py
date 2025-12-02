@@ -31,6 +31,7 @@ def get_stats():
         t_data = tournament.to_dict()
         print(f"\n   📋 {t_data.get('name', 'Unnamed')}")
         print(f"      ID: {tournament.id}")
+        print(f"      Room Code: {t_data.get('roomCode', 'N/A')}")
         print(f"      Status: {t_data.get('status', 'unknown')}")
         print(f"      Type: {t_data.get('type', 'standard')}")
         print(f"      Current Round: {t_data.get('currentRound', 0)}")

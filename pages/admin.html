@@ -92,7 +92,7 @@
                     <div>
                         <button id="bulkAddPlayersBtn" class="btn btn-success">📄 Bulk Import</button>
                         <button id="eliminatePlayersBtn" class="btn btn-secondary" style="display: none;">Eliminate Players</button>
-                        <button id="addPlayerBtn" class="btn btn-primary">+ Add Player</button>
+                    <button id="addPlayerBtn" class="btn btn-primary">+ Add Player</button>
                     </div>
                 </div>
                 <div id="playersList" class="players-grid"></div>
@@ -162,6 +162,24 @@
                     <input type="text" id="tournamentName" required>
                 </div>
                 <div class="form-group">
+                    <label>Room Code (4 characters):</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="tournamentRoomCode" 
+                               maxlength="4" 
+                               placeholder="AUTO" 
+                               style="flex: 1; text-transform: uppercase;"
+                               oninput="this.value = this.value.toUpperCase()">
+                        <button type="button" id="generateCodeBtn" class="btn btn-secondary" 
+                                style="padding: 8px 16px; font-size: 14px;"
+                                onclick="generateRandomRoomCode()">
+                            Generate
+                        </button>
+                    </div>
+                    <small style="display: block; color: #6b7280; margin-top: 5px;">
+                        Leave blank for auto-generated code. Letters and numbers only.
+                    </small>
+                </div>
+                <div class="form-group">
                     <label>Tournament Type:</label>
                     <select id="tournamentType" onchange="toggleCutlineOptions()">
                         <option value="standard">Standard</option>
@@ -203,6 +221,15 @@
                     const type = document.getElementById('tournamentType').value;
                     const cutlineGroup = document.getElementById('cutlineRoundsGroup');
                     cutlineGroup.style.display = type === 'cutline' ? 'block' : 'none';
+                }
+                
+                function generateRandomRoomCode() {
+                    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                    let code = '';
+                    for (let i = 0; i < 4; i++) {
+                        code += chars.charAt(Math.floor(Math.random() * chars.length));
+                    }
+                    document.getElementById('tournamentRoomCode').value = code;
                 }
             </script>
         </div>
@@ -252,7 +279,7 @@
         <div class="modal-content">
             <h2>Auto-Assign Players to Tables</h2>
             <p id="autoAssignInfo" style="margin: 15px 0; color: #374151;"></p>
-            <div class="form-group">
+                <div class="form-group">
                 <label>Select tables to assign players to:</label>
                 <div style="margin: 10px 0;">
                     <button type="button" id="useFirstTablesBtn" class="btn btn-secondary" style="font-size: 13px; padding: 8px 16px;">
@@ -275,7 +302,7 @@
     <div id="addTableToMapModal" class="modal hidden">
         <div class="modal-content">
             <h2>Add Table to Map</h2>
-            <div class="form-group">
+                <div class="form-group">
                 <label for="newTableNumber">Table Number:</label>
                 <input type="number" id="newTableNumber" min="1" value="1">
             </div>
@@ -429,6 +456,38 @@
         </div>
     </div>
 
+    <!-- Type to Confirm Modal (for dangerous actions like delete tournament) -->
+    <div id="typeToConfirmModal" class="modal hidden">
+        <div class="modal-content">
+            <h2 id="typeToConfirmTitle"></h2>
+            <div id="typeToConfirmMessage" style="margin: 20px 0; font-size: 14px; color: #374151; line-height: 1.6;"></div>
+            <div class="form-group">
+                <label id="typeToConfirmLabel" style="font-weight: bold; color: #ef4444;"></label>
+                <input type="text" id="typeToConfirmInput" style="margin-top: 5px; padding: 10px; font-size: 14px; font-family: monospace;">
+            </div>
+            <div class="form-actions">
+                <button type="button" id="cancelTypeToConfirmBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirmTypeToConfirmBtn" class="btn btn-primary">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Time Modal -->
+    <div id="addTimeModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Add Time to Round</h2>
+            <p style="margin: 15px 0; color: #374151;">Enter the number of minutes to add to the current round:</p>
+            <div class="form-group">
+                <label for="addTimeMinutes">Minutes to Add:</label>
+                <input type="number" id="addTimeMinutes" min="1" max="120" value="5" style="padding: 10px; font-size: 14px;">
+            </div>
+            <div class="form-actions">
+                <button type="button" id="cancelAddTimeBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirmAddTimeBtn" class="btn btn-primary">Add Time</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Change Player Score Modal -->
     <div id="changeScoreModal" class="modal hidden">
         <div class="modal-content">
@@ -436,8 +495,8 @@
             <div style="margin: 20px 0;">
                 <p><strong>Player:</strong> <span id="changeScorePlayerName"></span></p>
                 <p><strong>Current Total Wins:</strong> <span id="changeScoreCurrentWins"></span></p>
-            </div>
-            <div class="form-group">
+                </div>
+                <div class="form-group">
                 <label for="changeScoreRound">Select Round:</label>
                 <select id="changeScoreRound" style="width: 100%; padding: 8px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db;">
                     <option value="">Select a round...</option>
@@ -538,11 +597,11 @@
                 <div id="bulkPlayerPreviewList" style="max-height: 200px; overflow-y: auto; background: #f9fafb; padding: 10px; border-radius: 6px; margin-top: 5px; font-size: 13px;"></div>
             </div>
             
-            <div class="form-actions">
+                <div class="form-actions">
                 <button type="button" id="cancelBulkPlayerBtn" class="btn btn-secondary">Cancel</button>
                 <button type="button" id="previewBulkPlayerBtn" class="btn btn-primary">Preview</button>
                 <button type="button" id="importBulkPlayerBtn" class="btn btn-success" style="display: none;">Import Players</button>
-            </div>
+                </div>
         </div>
     </div>
 

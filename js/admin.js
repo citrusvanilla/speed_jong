@@ -204,6 +204,20 @@ async function loadTournaments() {
             tournamentSelect.appendChild(option);
         });
         
+        // Check for saved tournament selection
+        const savedTournamentId = localStorage.getItem('adminSelectedTournamentId');
+        if (savedTournamentId) {
+            // Verify the tournament still exists
+            const tournamentExists = tournaments.find(t => t.id === savedTournamentId);
+            if (tournamentExists) {
+                tournamentSelect.value = savedTournamentId;
+                selectTournament(savedTournamentId);
+            } else {
+                // Tournament no longer exists, clear localStorage
+                localStorage.removeItem('adminSelectedTournamentId');
+            }
+        }
+        
         // Tournaments loaded
     } catch (error) {
         console.error('Error loading tournaments:', error);
@@ -221,6 +235,10 @@ tournamentSelect.addEventListener('change', (e) => {
 
 async function selectTournament(tournamentId) {
     currentTournamentId = tournamentId;
+    
+    // Save to localStorage for persistence across page reloads
+    localStorage.setItem('adminSelectedTournamentId', tournamentId);
+    
     noTournamentSelected.classList.add('hidden');
     tournamentContent.classList.remove('hidden');
     
@@ -250,6 +268,10 @@ async function selectTournament(tournamentId) {
 
 function deselectTournament() {
     currentTournamentId = null;
+    
+    // Clear from localStorage
+    localStorage.removeItem('adminSelectedTournamentId');
+    
     noTournamentSelected.classList.remove('hidden');
     tournamentContent.classList.add('hidden');
     
@@ -293,6 +315,19 @@ function displayTournamentInfo(data) {
         <div class="info-item">
             <div class="info-label">Name</div>
             <div class="info-value">${data.name}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Room Code</div>
+            <div class="info-value">
+                <input type="text" 
+                       id="roomCodeInput" 
+                       value="${data.roomCode || ''}" 
+                       maxlength="4"
+                       style="width: 100px; padding: 8px 12px; border-radius: 6px; border: 2px solid #e5e7eb; font-size: 16px; font-weight: bold; letter-spacing: 3px; text-align: center; text-transform: uppercase; color: #667eea;"
+                       oninput="this.value = this.value.toUpperCase()"
+                       onblur="updateRoomCode(this.value, '${data.roomCode || ''}')"
+                       placeholder="XXXX">
+            </div>
         </div>
         ${typeSpecificHTML}
         <div class="info-item">
@@ -338,47 +373,64 @@ function displayTournamentInfo(data) {
     // Add event listener for status change
     document.getElementById('statusSelect').addEventListener('change', async (e) => {
         const newStatus = e.target.value;
-        if (confirm(`Change tournament status to "${newStatus}"?`)) {
+        const oldStatus = data.status;
+        
+        showConfirmAction(
+            'Change Tournament Status',
+            `<p>Change tournament status to <strong>"${newStatus}"</strong>?</p>`,
+            async () => {
             try {
                 await updateDoc(doc(db, 'tournaments', currentTournamentId), {
                     status: newStatus
                 });
                 await loadTournaments();
+                    showToast('Tournament status updated.', 'success');
             } catch (error) {
                 console.error('Error updating status:', error);
-                showToast('Error updating status: ' + error.message, 'error');
+                    showToast('Error updating status: ' + error.message, 'error');
+                    e.target.value = oldStatus;
+                }
+            },
+            () => {
+                // Revert selection on cancel
+                e.target.value = oldStatus;
             }
-        } else {
-            // Revert selection
-            e.target.value = data.status;
-        }
+        );
     });
     
     // Add event listener for duration change
     document.getElementById('durationSelect').addEventListener('change', async (e) => {
         const newDuration = parseInt(e.target.value);
-        if (confirm(`Change timer duration to ${newDuration} seconds?`)) {
+        const oldDuration = data.timerDuration;
+        
+        showConfirmAction(
+            'Change Timer Duration',
+            `<p>Change default timer duration to <strong>${newDuration} minutes</strong>?</p>` +
+            `<p style="margin-top: 10px; color: #6b7280; font-size: 13px;">This will affect new rounds created after this change.</p>`,
+            async () => {
             try {
                 await updateDoc(doc(db, 'tournaments', currentTournamentId), {
                     timerDuration: newDuration
                 });
-                showToast('✅ Timer duration updated!', 'success');
+                    showToast('Timer duration updated!', 'success');
             } catch (error) {
                 console.error('Error updating duration:', error);
-                showToast('Error updating duration: ' + error.message, 'error');
-                // Revert selection
-                e.target.value = data.timerDuration;
+                    showToast('Error updating duration: ' + error.message, 'error');
+                    e.target.value = oldDuration;
+                }
+            },
+            () => {
+                // Revert selection on cancel
+                e.target.value = oldDuration;
             }
-        } else {
-            // Revert selection
-            e.target.value = data.timerDuration;
-        }
+        );
     });
 }
 
 // Create Tournament
 createTournamentBtn.addEventListener('click', () => {
     document.getElementById('tournamentName').value = '';
+    document.getElementById('tournamentRoomCode').value = '';
     document.getElementById('tournamentTimer').value = '5';
     tournamentModal.classList.remove('hidden');
 });
@@ -452,6 +504,9 @@ document.getElementById('importFileInput').addEventListener('change', async (e) 
         const tournamentData = { ...importData.tournament };
         delete tournamentData.id; // Remove old ID
         tournamentData.name = tournamentName; // Use new name if changed
+        
+        // Generate new room code (always generate new for imports to avoid conflicts)
+        tournamentData.roomCode = await generateUniqueRoomCode();
         
         // Convert timestamps
         if (tournamentData.createdAt) {
@@ -594,16 +649,107 @@ document.getElementById('cancelTournamentBtn').addEventListener('click', () => {
     tournamentModal.classList.add('hidden');
 });
 
+// Generate a unique 4-character room code
+function generateRoomCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; // All alphanumeric
+    let code = '';
+    for (let i = 0; i < 4; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+// Check if room code already exists (case-insensitive)
+async function isRoomCodeUnique(roomCode, excludeTournamentId = null) {
+    const tournamentsSnap = await getDocs(collection(db, 'tournaments'));
+    const existingCodes = tournamentsSnap.docs
+        .filter(doc => doc.id !== excludeTournamentId) // Exclude current tournament when editing
+        .map(doc => doc.data().roomCode?.toUpperCase())
+        .filter(Boolean);
+    return !existingCodes.includes(roomCode.toUpperCase());
+}
+
+// Generate unique room code
+async function generateUniqueRoomCode() {
+    let roomCode;
+    let attempts = 0;
+    const maxAttempts = 20;
+    
+    do {
+        roomCode = generateRoomCode();
+        attempts++;
+        if (attempts > maxAttempts) {
+            throw new Error('Failed to generate unique room code');
+        }
+    } while (!(await isRoomCodeUnique(roomCode)));
+    
+    return roomCode;
+}
+
+// Validate and sanitize room code
+function validateRoomCode(code) {
+    const sanitized = code.trim().toUpperCase();
+    
+    // Must be exactly 4 characters
+    if (sanitized.length !== 4) {
+        return { valid: false, error: 'Room code must be exactly 4 characters' };
+    }
+    
+    // Must be alphanumeric only
+    if (!/^[A-Z0-9]{4}$/.test(sanitized)) {
+        return { valid: false, error: 'Room code must contain only letters and numbers' };
+    }
+    
+    return { valid: true, code: sanitized };
+}
+
 document.getElementById('tournamentForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const name = document.getElementById('tournamentName').value;
+    const name = document.getElementById('tournamentName').value.trim();
+    const customRoomCode = document.getElementById('tournamentRoomCode').value.trim();
     const type = document.getElementById('tournamentType').value;
     const timerDuration = parseInt(document.getElementById('tournamentTimer').value);
     const maxPlayers = parseInt(document.getElementById('tournamentMaxPlayers').value) || 0;
     const totalRounds = type === 'cutline' ? parseInt(document.getElementById('tournamentRounds').value) : 0;
     
+    if (!name) {
+        showToast('Please enter a tournament name.', 'warning');
+        return;
+    }
+    
     try {
+        // Check if tournament name already exists
+        const existingTournaments = await getDocs(collection(db, 'tournaments'));
+        const existingNames = existingTournaments.docs.map(doc => doc.data().name);
+        
+        if (existingNames.includes(name)) {
+            showToast(`A tournament named "${name}" already exists. Please choose a different name.`, 'error');
+            return;
+        }
+        
+        // Determine room code (custom or auto-generated)
+        let roomCode;
+        if (customRoomCode) {
+            // Validate custom room code
+            const validation = validateRoomCode(customRoomCode);
+            if (!validation.valid) {
+                showToast(validation.error, 'error');
+                return;
+            }
+            
+            // Check if custom code is unique
+            if (!(await isRoomCodeUnique(validation.code))) {
+                showToast('This room code is already in use. Please choose a different code.', 'error');
+                return;
+            }
+            
+            roomCode = validation.code;
+        } else {
+            // Auto-generate unique room code
+            roomCode = await generateUniqueRoomCode();
+        }
+        
         const tournamentRef = doc(collection(db, 'tournaments'));
         await setDoc(tournamentRef, {
             name,
@@ -611,6 +757,7 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
             timerDuration,
             maxPlayers,
             totalRounds,
+            roomCode,
             status: 'staging',
             currentRound: 0,
             roundInProgress: false,
@@ -618,6 +765,8 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
         });
         
         tournamentModal.classList.add('hidden');
+        document.getElementById('tournamentRoomCode').value = ''; // Clear for next time
+        showToast(`Tournament "${name}" created successfully! Room Code: ${roomCode}`, 'success');
         await loadTournaments();
         tournamentSelect.value = tournamentRef.id;
         selectTournament(tournamentRef.id);
@@ -657,7 +806,7 @@ function displayPlayers() {
         if (eliminatedPlayers.length > 0) {
             playerCount.textContent = `${activePlayers.length} / ${maxPlayers} (${eliminatedPlayers.length} eliminated)`;
         } else {
-            playerCount.textContent = `${activePlayers.length} / ${maxPlayers}`;
+        playerCount.textContent = `${activePlayers.length} / ${maxPlayers}`;
         }
         // Add warning color if at limit
         if (allPlayers.length >= maxPlayers) {
@@ -765,22 +914,29 @@ document.getElementById('addPlayerBtn').addEventListener('click', async () => {
     const roundInProgress = tournamentData.roundInProgress || false;
     const currentRound = tournamentData.currentRound || 0;
     
-    if (roundInProgress) {
-        const proceed = confirm(
-            `⚠️ Round ${currentRound} is currently in progress.\n\n` +
-            `Adding a player now means:\n` +
-            `- They won't be assigned to a table for this round\n` +
-            `- You'll need to manually assign them before the next round\n\n` +
-            `Continue?`
-        );
-        if (!proceed) return;
-    }
-    
+    const openPlayerModal = () => {
     currentEditingPlayerId = null;
     document.getElementById('playerModalTitle').textContent = 'Add Player';
     document.getElementById('playerName').value = '';
     playerModal.classList.remove('hidden');
     document.getElementById('playerName').focus();
+    };
+    
+    if (roundInProgress) {
+        showConfirmAction(
+            'Round In Progress',
+            `<p style="color: #f59e0b; font-weight: bold;">⚠️ Round ${currentRound} is currently in progress.</p>` +
+            `<p style="margin-top: 15px;">Adding a player now means:</p>` +
+            `<ul style="margin-top: 10px; padding-left: 20px; line-height: 1.8;">` +
+            `<li>They won't be assigned to a table for this round</li>` +
+            `<li>You'll need to manually assign them before the next round</li>` +
+            `</ul>` +
+            `<p style="margin-top: 15px;">Continue?</p>`,
+            openPlayerModal
+        );
+    } else {
+        openPlayerModal();
+    }
 });
 
 // Bulk player import
@@ -1046,46 +1202,75 @@ document.getElementById('importBulkPlayerBtn').addEventListener('click', async (
     const maxPlayers = tournamentData.maxPlayers || 0;
     const currentPlayerCount = Object.keys(playersData).length;
     
+    // Handle player limit exceeded
     if (maxPlayers > 0 && (currentPlayerCount + bulkPlayerNames.length) > maxPlayers) {
         const available = maxPlayers - currentPlayerCount;
-        if (!confirm(`Warning: Tournament limit is ${maxPlayers} players.\n\nCurrently: ${currentPlayerCount} players\nImporting: ${bulkPlayerNames.length} players\nWould exceed limit by: ${(currentPlayerCount + bulkPlayerNames.length) - maxPlayers}\n\nOnly ${available} player(s) can be added. Import first ${available} players?`)) {
+        const excess = (currentPlayerCount + bulkPlayerNames.length) - maxPlayers;
+        
+        const limitWarning = `<p style="color: #f59e0b; font-weight: bold;">Warning: Tournament limit is ${maxPlayers} players.</p>` +
+            `<p style="margin-top: 10px;"><strong>Currently:</strong> ${currentPlayerCount} players<br>` +
+            `<strong>Importing:</strong> ${bulkPlayerNames.length} players<br>` +
+            `<strong>Would exceed limit by:</strong> ${excess}</p>` +
+            `<p style="margin-top: 10px; padding: 10px; background: #fef3c7; border-radius: 6px;">` +
+            `Only <strong>${available}</strong> player(s) can be added.<br>Import first ${available} players?</p>`;
+        
+        try {
+            await new Promise((resolve, reject) => {
+                showConfirmAction(
+                    'Player Limit Exceeded',
+                    limitWarning,
+                    () => {
+                        bulkPlayerNames = bulkPlayerNames.slice(0, available);
+                        resolve();
+                    },
+                    () => {
+                        reject(new Error('Import cancelled'));
+                    }
+                );
+            });
+        } catch (cancelError) {
             return;
         }
-        bulkPlayerNames = bulkPlayerNames.slice(0, available);
     }
     
-    if (!confirm(`Import ${bulkPlayerNames.length} player(s)?`)) {
-        return;
-    }
+    // Confirm import
+    const confirmMessage = `<p>Import <strong>${bulkPlayerNames.length}</strong> player(s)?</p>` +
+        `<p style="margin-top: 10px; color: #6b7280; font-size: 13px;">Players will be added to the tournament.</p>`;
     
-    try {
-        // Use batch write for all players - single network call
-        const batch = writeBatch(db);
-        
-        for (const name of bulkPlayerNames) {
-            const playerRef = doc(collection(db, 'tournaments', currentTournamentId, 'players'));
-            batch.set(playerRef, {
-                name,
-                registeredAt: serverTimestamp(),
-                tableId: null,
-                position: null,
-                wins: 0,
-                points: 0,
-                lastWinAt: null,
-                eliminated: false,
-                eliminatedInRound: null
-            });
+    showConfirmAction(
+        'Import Players',
+        confirmMessage,
+        async () => {
+            try {
+                // Use batch write for all players - single network call
+                const batch = writeBatch(db);
+                
+                for (const name of bulkPlayerNames) {
+                    const playerRef = doc(collection(db, 'tournaments', currentTournamentId, 'players'));
+                    batch.set(playerRef, {
+                        name,
+                        registeredAt: serverTimestamp(),
+                        tableId: null,
+                        position: null,
+                        wins: 0,
+                        points: 0,
+                        lastWinAt: null,
+                        eliminated: false,
+                        eliminatedInRound: null
+                    });
+                }
+                
+                // Commit all players in one batch
+                await batch.commit();
+                
+                bulkPlayerModal.classList.add('hidden');
+                showToast(`Successfully imported ${bulkPlayerNames.length} player(s)!`, 'success');
+            } catch (error) {
+                console.error('Error importing players:', error);
+                showToast('Error importing players: ' + error.message, 'error');
+            }
         }
-        
-        // Commit all players in one batch
-        await batch.commit();
-        
-        bulkPlayerModal.classList.add('hidden');
-        showToast(`✅ Successfully imported ${bulkPlayerNames.length} player(s)!`, "success");
-    } catch (error) {
-        console.error('Error importing players:', error);
-        showToast('Error importing players: ' + error.message, 'error');
-    }
+    );
 });
 
 document.getElementById('cancelPlayerBtn').addEventListener('click', () => {
@@ -1240,6 +1425,36 @@ function showConfirmAction(title, message, onConfirm, onCancel) {
     
     document.getElementById('confirmActionModal').classList.remove('hidden');
 }
+
+// Show type-to-confirm modal (for dangerous actions requiring exact text input)
+function showTypeToConfirm(title, message, expectedText, onConfirm) {
+    document.getElementById('typeToConfirmTitle').textContent = title;
+    document.getElementById('typeToConfirmMessage').innerHTML = message;
+    document.getElementById('typeToConfirmLabel').textContent = `Type "${expectedText}" to confirm:`;
+    document.getElementById('typeToConfirmInput').value = '';
+    
+    const confirmBtn = document.getElementById('confirmTypeToConfirmBtn');
+    const input = document.getElementById('typeToConfirmInput');
+    
+    confirmBtn.onclick = () => {
+        const enteredText = input.value.trim();
+        if (enteredText === expectedText) {
+            document.getElementById('typeToConfirmModal').classList.add('hidden');
+            onConfirm();
+        } else {
+            showToast(`Please type "${expectedText}" exactly to confirm.`, 'warning');
+        }
+    };
+    
+    document.getElementById('typeToConfirmModal').classList.remove('hidden');
+    input.focus();
+}
+
+// Cancel type-to-confirm modal
+document.getElementById('cancelTypeToConfirmBtn').addEventListener('click', () => {
+    document.getElementById('typeToConfirmModal').classList.add('hidden');
+    showToast('Action cancelled.', 'info');
+});
 
 // Eliminate a player
 window.eliminatePlayer = async function(playerId, currentRound) {
@@ -1480,15 +1695,15 @@ window.deletePlayer = async function(playerId) {
         'Delete Player',
         confirmMsg,
         async () => {
-            try {
-                // If player is assigned to a table, remove them from it
-                if (player.tableId) {
-                    const tableRef = doc(db, 'tournaments', currentTournamentId, 'tables', player.tableId);
-                    const tableDoc = await getDoc(tableRef);
-                    if (tableDoc.exists()) {
-                        const tableData = tableDoc.data();
-                        const updatedPlayers = tableData.players.filter(id => id !== playerId);
-                        const updatedPositions = { ...tableData.positions };
+    try {
+        // If player is assigned to a table, remove them from it
+        if (player.tableId) {
+            const tableRef = doc(db, 'tournaments', currentTournamentId, 'tables', player.tableId);
+            const tableDoc = await getDoc(tableRef);
+            if (tableDoc.exists()) {
+                const tableData = tableDoc.data();
+                const updatedPlayers = tableData.players.filter(id => id !== playerId);
+                const updatedPositions = { ...tableData.positions };
                         
                         // Delete position by finding which position this player occupied
                         for (const [position, pId] of Object.entries(tableData.positions || {})) {
@@ -1496,20 +1711,20 @@ window.deletePlayer = async function(playerId) {
                                 delete updatedPositions[position];
                             }
                         }
-                        
-                        await updateDoc(tableRef, {
-                            players: updatedPlayers,
-                            positions: updatedPositions
-                        });
-                    }
-                }
                 
-                await deleteDoc(doc(db, 'tournaments', currentTournamentId, 'players', playerId));
-                showToast(`${player.name} deleted successfully.`, 'success');
-            } catch (error) {
-                console.error('Error deleting player:', error);
-                showToast('Error deleting player: ' + error.message, 'error');
+                await updateDoc(tableRef, {
+                    players: updatedPlayers,
+                    positions: updatedPositions
+                });
             }
+        }
+        
+        await deleteDoc(doc(db, 'tournaments', currentTournamentId, 'players', playerId));
+                showToast(`${player.name} deleted successfully.`, 'success');
+    } catch (error) {
+        console.error('Error deleting player:', error);
+                showToast('Error deleting player: ' + error.message, 'error');
+    }
         }
     );
 };
@@ -1602,37 +1817,50 @@ window.toggleTableActiveFromList = async function(tableId) {
         // If deactivating a table with players, confirm first
         if (!newActiveState && table.players && table.players.length > 0) {
             const playerNames = table.players.map(pid => playersData[pid]?.name || 'Unknown').join(', ');
-            if (!confirm(`Deactivating this table will unassign ${table.players.length} player(s):\n\n${playerNames}\n\nContinue?`)) {
-                return;
-            }
             
-            // Use batch write for efficiency
-            const batch = writeBatch(db);
-            
-            // Batch: Unassign all players
-            for (const playerId of table.players) {
-                const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
-                batch.update(playerRef, {
-                    tableId: null,
-                    position: null
-                });
-            }
-            
-            // Batch: Clear table's player list and deactivate
-            const tableRef = doc(db, 'tournaments', currentTournamentId, 'tables', tableId);
-            batch.update(tableRef, {
-                active: newActiveState,
-                players: [],
-                positions: {}
-            });
-            
-            await batch.commit();
-        } else {
-            // Just toggle active state
-            await updateDoc(doc(db, 'tournaments', currentTournamentId, 'tables', tableId), {
-                active: newActiveState
-            });
-        }
+            showConfirmAction(
+                'Deactivate Table',
+                `<p>Deactivating this table will unassign <strong>${table.players.length}</strong> player(s):</p>` +
+                `<p style="margin-top: 10px; padding: 10px; background: #f3f4f6; border-radius: 6px; font-size: 13px;">${playerNames}</p>` +
+                `<p style="margin-top: 10px;">Continue?</p>`,
+                async () => {
+                    try {
+                        // Use batch write for efficiency
+                        const batch = writeBatch(db);
+                        
+                        // Batch: Unassign all players
+                        for (const playerId of table.players) {
+                            const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
+                            batch.update(playerRef, {
+                                tableId: null,
+                                position: null
+                            });
+                        }
+                        
+                        // Batch: Clear table's player list and deactivate
+                        const tableRef = doc(db, 'tournaments', currentTournamentId, 'tables', tableId);
+                        batch.update(tableRef, {
+                            active: newActiveState,
+                            players: [],
+                            positions: {}
+                        });
+                        
+                        await batch.commit();
+                        showToast('Table deactivated and players unassigned.', 'success');
+                    } catch (error) {
+                        console.error('Error deactivating table:', error);
+                        showToast('Error deactivating table: ' + error.message, 'error');
+                    }
+                }
+            );
+        return;
+    }
+    
+        // Just toggle active state
+        await updateDoc(doc(db, 'tournaments', currentTournamentId, 'tables', tableId), {
+            active: newActiveState
+        });
+        showToast(`Table ${newActiveState ? 'activated' : 'deactivated'}.`, 'success');
     } catch (error) {
         console.error('Error toggling table active state:', error);
         showToast('Error updating table: ' + error.message, 'error');
@@ -1646,32 +1874,44 @@ function getWindSymbol(position) {
 
 // Delete table function (called from table list)
 window.deleteTable = async function(tableId) {
-    if (!confirm('Delete this table? Players will be unassigned.')) return;
+    const table = tablesData[tableId];
+    const tableNumber = table?.tableNumber || '?';
+    const playerCount = table?.players?.length || 0;
     
-    try {
-        const table = tablesData[tableId];
-        
-        // Use batch write for efficiency
-        const batch = writeBatch(db);
-        
-        // Batch: Unassign all players
+    let message = `<p>Delete Table ${tableNumber}?</p>`;
+    if (playerCount > 0) {
+        message += `<p style="margin-top: 10px; color: #f59e0b;"><strong>${playerCount}</strong> player(s) will be unassigned.</p>`;
+    }
+    
+    showConfirmAction(
+        'Delete Table',
+        message,
+        async () => {
+            try {
+                // Use batch write for efficiency
+                const batch = writeBatch(db);
+                
+                // Batch: Unassign all players
         for (const playerId of table.players || []) {
-            const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
-            batch.update(playerRef, {
+                    const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
+                    batch.update(playerRef, {
                 tableId: null,
                 position: null
             });
         }
         
-        // Batch: Delete the table
-        const tableRef = doc(db, 'tournaments', currentTournamentId, 'tables', tableId);
-        batch.delete(tableRef);
-        
-        await batch.commit();
+                // Batch: Delete the table
+                const tableRef = doc(db, 'tournaments', currentTournamentId, 'tables', tableId);
+                batch.delete(tableRef);
+                
+                await batch.commit();
+                showToast(`Table ${tableNumber} deleted.`, 'success');
     } catch (error) {
         console.error('Error deleting table:', error);
-        showToast('Error deleting table: ' + error.message, 'error');
+                showToast('Error deleting table: ' + error.message, 'error');
     }
+        }
+    );
 };
 
 // Auto-Assign Players to Tables
@@ -1810,8 +2050,8 @@ document.getElementById('confirmAutoAssignBtn').addEventListener('click', async 
     
     const unassignedPlayers = Object.values(playersData).filter(p => !p.tableId && !p.eliminated);
     const shuffled = [...unassignedPlayers].sort(() => Math.random() - 0.5);
-    const positions = ['East', 'South', 'West', 'North'];
-    
+        const positions = ['East', 'South', 'West', 'North'];
+        
     try {
         modal.classList.add('hidden');
         
@@ -2018,20 +2258,25 @@ archiveTournamentBtn.addEventListener('click', async () => {
     const newStatus = isCompleted ? 'active' : 'completed';
     const action = isCompleted ? 'Reactivate' : 'Archive';
     
-    if (!confirm(`${action} "${tournamentData.name}"? This will change status to ${newStatus}.`)) return;
-    
+    showConfirmAction(
+        `${action} Tournament`,
+        `<p>${action} <strong>"${tournamentData.name}"</strong>?</p>` +
+        `<p style="margin-top: 10px; color: #6b7280;">This will change status to <strong>${newStatus}</strong>.</p>`,
+        async () => {
     try {
         await updateDoc(doc(db, 'tournaments', currentTournamentId), {
             status: newStatus
         });
         
-        showToast(`Tournament ${action.toLowerCase()}d successfully!`, 'success');
+                showToast(`Tournament ${action.toLowerCase()}d successfully!`, 'success');
         await loadTournaments();
         selectTournament(currentTournamentId); // Refresh to update button
     } catch (error) {
         console.error(`Error ${action.toLowerCase()}ing tournament:`, error);
-        showToast(`Error ${action.toLowerCase()}ing tournament: ` + error.message);
+                showToast(`Error ${action.toLowerCase()}ing tournament: ` + error.message, 'error');
     }
+        }
+    );
 });
 
 // Delete Tournament
@@ -2041,22 +2286,23 @@ deleteTournamentBtn.addEventListener('click', async () => {
     const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
     const tournamentData = tournamentDoc.data();
     
-    const confirmText = prompt(
-        `⚠️ WARNING: Delete "${tournamentData.name}"?\n\n` +
-        `This will permanently delete:\n` +
-        `- The tournament\n` +
-        `- All ${Object.keys(playersData).length} players\n` +
-        `- All ${Object.keys(tablesData).length} tables\n` +
-        `- All game data\n\n` +
-        `Type "DELETE" to confirm:`
-    );
+    const message = `<p style="color: #ef4444; font-weight: bold;">⚠️ WARNING: Delete "${tournamentData.name}"?</p>` +
+        `<p style="margin-top: 15px;">This will permanently delete:</p>` +
+        `<ul style="margin-top: 10px; padding-left: 20px; line-height: 1.8; color: #374151;">` +
+        `<li>The tournament</li>` +
+        `<li>All ${Object.keys(playersData).length} players</li>` +
+        `<li>All ${Object.keys(tablesData).length} tables</li>` +
+        `<li>All game data</li>` +
+        `</ul>`;
     
-    if (confirmText !== 'DELETE') {
-        showToast('Deletion cancelled.', 'info');
-        return;
-    }
-    
-    try {
+    showTypeToConfirm(
+        'Delete Tournament',
+        message,
+        'DELETE',
+        async () => {
+            try {
+                showToast('Deleting tournament...', 'info');
+                
         // Delete all subcollections first
         
         // Delete all players
@@ -2071,13 +2317,20 @@ deleteTournamentBtn.addEventListener('click', async () => {
         
         // Delete all rounds (if any)
         const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
-        const deleteRoundPromises = roundsSnap.docs.map(doc => deleteDoc(doc.ref));
-        await Promise.all(deleteRoundPromises);
+                for (const roundDoc of roundsSnap.docs) {
+                    // Delete participants first
+                    const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundDoc.id, 'participants'));
+                    const deleteParticipantPromises = participantsSnap.docs.map(pDoc => deleteDoc(pDoc.ref));
+                    await Promise.all(deleteParticipantPromises);
+                    
+                    // Then delete round
+                    await deleteDoc(roundDoc.ref);
+                }
         
         // Finally delete the tournament itself
         await deleteDoc(doc(db, 'tournaments', currentTournamentId));
         
-        showToast('Tournament deleted successfully!', 'success');
+                showToast('Tournament deleted successfully!', 'success');
         
         // Reload tournaments and clear selection
         currentTournamentId = null;
@@ -2086,8 +2339,10 @@ deleteTournamentBtn.addEventListener('click', async () => {
         deselectTournament();
     } catch (error) {
         console.error('Error deleting tournament:', error);
-        showToast('Error deleting tournament: ' + error.message, 'error');
-    }
+                showToast('Error deleting tournament: ' + error.message, 'error');
+            }
+        }
+    );
 });
 
 // Format time helper
@@ -2369,7 +2624,7 @@ async function displayRoundInfo(data) {
                 moveToNextRoundBtn.style.display = 'none';
                 createPlayoffBtnMain.style.display = canCreatePlayoff ? 'inline-block' : 'none';
                 completeTournamentBtn.style.display = tournamentCompleted ? 'none' : 'inline-block';
-            } else {
+        } else {
                 // Regular round completed, not last - show Move to Next Round
                 moveToNextRoundBtn.style.display = 'inline-block';
                 moveToNextRoundBtn.textContent = `Move to Round ${currentRound + 1}`;
@@ -2560,15 +2815,17 @@ window.restartSpecificRound = async function(roundNumber, roundId) {
     const data = tournamentDoc.data();
     const currentRound = data.currentRound || 0;
     
-    const confirmMsg = `⚠️ Restart Round ${roundNumber}?\n\n` +
-        `This will:\n` +
-        `- Set Round ${roundNumber} back to "In Progress"\n` +
-        `- NOT reset player scores or table assignments\n` +
-        `- Allow games to continue in that round\n\n` +
-        `Continue?`;
-    
-    if (!confirm(confirmMsg)) return;
-    
+    showConfirmAction(
+        'Restart Round',
+        `<p style="color: #f59e0b; font-weight: bold;">⚠️ Restart Round ${roundNumber}?</p>` +
+        `<p style="margin-top: 15px;">This will:</p>` +
+        `<ul style="margin-top: 10px; padding-left: 20px; line-height: 1.8;">` +
+        `<li>Set Round ${roundNumber} back to "In Progress"</li>` +
+        `<li>NOT reset player scores or table assignments</li>` +
+        `<li>Allow games to continue in that round</li>` +
+        `</ul>` +
+        `<p style="margin-top: 15px;">Continue?</p>`,
+        async () => {
     try {
         // Update specific round record to in progress
         const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
@@ -2583,12 +2840,14 @@ window.restartSpecificRound = async function(roundNumber, roundId) {
             roundInProgress: true
         });
         
-        showToast(`✅ Round ${roundNumber} restarted!`, "success");
+                showToast(`Round ${roundNumber} restarted!`, 'success');
         selectTournament(currentTournamentId); // Refresh
     } catch (error) {
         console.error('Error restarting round:', error);
-        showToast('Error restarting round: ' + error.message, 'error');
+                showToast('Error restarting round: ' + error.message, 'error');
     }
+        }
+    );
 };
 
 // Start new round
@@ -2823,18 +3082,29 @@ window.updateRoundTimer = async function(newValue, originalValue) {
     }
 };
 
-addTimeBtn.addEventListener('click', async () => {
+addTimeBtn.addEventListener('click', () => {
     if (!currentTournamentId || !currentRoundData) return;
     
-    const minutesToAdd = prompt('Add time to current round:\n\nEnter number of minutes to add:', '5');
+    document.getElementById('addTimeMinutes').value = '5';
+    document.getElementById('addTimeModal').classList.remove('hidden');
+    document.getElementById('addTimeMinutes').focus();
+});
+
+// Cancel add time modal
+document.getElementById('cancelAddTimeBtn').addEventListener('click', () => {
+    document.getElementById('addTimeModal').classList.add('hidden');
+});
+
+// Confirm add time
+document.getElementById('confirmAddTimeBtn').addEventListener('click', async () => {
+    const addMinutes = parseInt(document.getElementById('addTimeMinutes').value);
     
-    if (minutesToAdd === null) return; // User cancelled
-    
-    const addMinutes = parseInt(minutesToAdd);
     if (isNaN(addMinutes) || addMinutes <= 0) {
-        showToast('Invalid input. Please enter a positive number.', 'warning');
+        showToast('Please enter a positive number of minutes.', 'warning');
         return;
     }
+    
+    document.getElementById('addTimeModal').classList.add('hidden');
     
     try {
         const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', currentRoundData.id);
@@ -2848,7 +3118,7 @@ addTimeBtn.addEventListener('click', async () => {
         // Update local data
         currentRoundData.timerDuration = newDuration;
         
-        showToast(`✅ Added ${addMinutes} minute(s) to the round!\n\nNew total duration: ${newDuration} minutes`, "success");
+        showToast(`Added ${addMinutes} minute(s) to the round! New total duration: ${newDuration} minutes`, 'success');
         
         // Refresh timer display
         updateAdminTimerDisplay();
@@ -2931,7 +3201,7 @@ endRoundBtn.addEventListener('click', async () => {
             // Cut exactly to target - use tie-breakers to decide which players get cut
             // sortedPlayers is already sorted by: total wins, round wins, lastWinAt
             // So just cut the first cutCount players (they are the worst performers)
-            playersToCut = sortedPlayers.slice(0, cutCount);
+        playersToCut = sortedPlayers.slice(0, cutCount);
             const playersToKeep = sortedPlayers.slice(cutCount);
             const remainingCount = playersToKeep.length;
             
@@ -3136,13 +3406,13 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
             // Eliminate players (if any)
             let eliminatedCount = 0;
             if (playersToCut && playersToCut.length > 0) {
-                for (const player of playersToCut) {
+            for (const player of playersToCut) {
                     if (player.id) {
                         const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', player.id);
                         batch.update(playerRef, {
-                            eliminated: true,
-                            eliminatedInRound: currentRound
-                        });
+                    eliminated: true,
+                    eliminatedInRound: currentRound
+                });
                         eliminatedCount++;
                     }
                 }
@@ -3263,7 +3533,7 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
                     
                     showToast(`✅ Round ${currentRound} Complete!\n\n${eliminatedCount > 0 ? `• ${eliminatedCount} player(s) eliminated\n` : ''}• ${remainingPlayers} player(s) auto-assigned to ${tablesNeeded} table(s)\n• Round ${currentRound + 1} created in staging (${defaultTimer} min timer)\n\nYou can edit the timer duration in the UI, then click "Start Round ${currentRound + 1}"!`);
                     selectTournament(currentTournamentId); // Refresh
-                } else {
+        } else {
                     // Can't auto-assign - show error
                     showToast(`⚠️ Cannot auto-assign players to tables!\n\n${eliminatedCount > 0 ? `• ${eliminatedCount} player(s) eliminated\n` : ''}• ${remainingPlayers} player(s) remaining\n\nIssues:\n${remainingPlayers % 4 !== 0 ? `• Player count (${remainingPlayers}) not divisible by 4\n` : ''}${activeTables.length < tablesNeeded ? `• Need ${tablesNeeded} tables, only ${activeTables.length} active\n` : ''}\nPlease manually set up the next round.`);
                     selectTournament(currentTournamentId);
@@ -3296,7 +3566,7 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
                 selectTournament(currentTournamentId); // Refresh to show playoff button
             } else {
                 showToast(`✅ Round ${currentRound} ended!\n\nClick "Move to Round ${currentRound + 1}" to set up the next round.`, "success");
-                selectTournament(currentTournamentId); // Refresh
+        selectTournament(currentTournamentId); // Refresh
             }
         }
         
@@ -3613,6 +3883,43 @@ window.updateTotalRounds = async function(newValue, oldValue) {
     }
 };
 
+// Update room code
+window.updateRoomCode = async function(newValue, oldValue) {
+    const newCode = newValue.trim().toUpperCase();
+    const oldCode = oldValue.trim().toUpperCase();
+    
+    // No change
+    if (newCode === oldCode) return;
+    
+    // Validate
+    const validation = validateRoomCode(newCode);
+    if (!validation.valid) {
+        showToast(validation.error, 'error');
+        // Reset to old value
+        document.getElementById('roomCodeInput').value = oldValue;
+        return;
+    }
+    
+    try {
+        // Check uniqueness (exclude current tournament)
+        if (!(await isRoomCodeUnique(validation.code, currentTournamentId))) {
+            showToast('This room code is already in use by another tournament.', 'error');
+            document.getElementById('roomCodeInput').value = oldValue;
+            return;
+        }
+        
+        await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+            roomCode: validation.code
+        });
+        showToast(`✅ Room code updated to: ${validation.code}`, 'success');
+        selectTournament(currentTournamentId); // Refresh
+    } catch (error) {
+        console.error('Error updating room code:', error);
+        showToast('Error updating room code: ' + error.message, 'error');
+        document.getElementById('roomCodeInput').value = oldValue;
+    }
+};
+
 // Make functions globally accessible
 window.editPlayer = editPlayer;
 window.deletePlayer = deletePlayer;
@@ -3814,19 +4121,39 @@ function showTableMenu(tableId, tableNumber, isActive, x, y) {
         
         if (!newActiveState && table.players && table.players.length > 0) {
             const playerNames = table.players.map(pid => playersData[pid]?.name || 'Unknown').join(', ');
-            if (!confirm(`Deactivating this table will unassign ${table.players.length} player(s):\n\n${playerNames}\n\nContinue?`)) {
-                return;
-            }
+            
+            showConfirmAction(
+                'Deactivate Table',
+                `<p>Deactivating this table will unassign <strong>${table.players.length}</strong> player(s):</p>` +
+                `<p style="margin-top: 10px; padding: 10px; background: #f3f4f6; border-radius: 6px; font-size: 13px;">${playerNames}</p>` +
+                `<p style="margin-top: 10px;">Continue?</p>`,
+                async () => {
+                    await toggleTableActive(tableId);
+                }
+            );
+        } else {
+            await toggleTableActive(tableId);
         }
-        
-        await toggleTableActive(tableId);
     });
     
     menu.querySelector('[data-action="delete"]').addEventListener('click', () => {
         menu.remove();
-        if (confirm(`Delete Table ${tableNumber}?\n\nThis will unassign all players from this table.`)) {
-            deleteTableFromMap(tableId);
+        
+        const table = tablesData[tableId];
+        const playerCount = table?.players?.length || 0;
+        
+        let message = `<p>Delete Table ${tableNumber}?</p>`;
+        if (playerCount > 0) {
+            message += `<p style="margin-top: 10px; color: #f59e0b;">This will unassign <strong>${playerCount}</strong> player(s) from this table.</p>`;
         }
+        
+        showConfirmAction(
+            'Delete Table',
+            message,
+            () => {
+                deleteTableFromMap(tableId);
+            }
+        );
     });
     
     document.body.appendChild(menu);

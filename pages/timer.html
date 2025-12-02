@@ -19,12 +19,24 @@
             <h1>SpeedJong Timer</h1>
             <img src="../assets/images/mahjong.gif" alt="Mahjong" class="mahjong-gif">
 
-            <div id="tournamentInfo" class="config-group hidden" style="background: rgba(102, 126, 234, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
-                <div style="text-align: center; color: #667eea; font-size: 0.8rem; margin-bottom: 10px;">Tournament Mode</div>
-                <div id="tournamentTableInfo" style="text-align: center; color: #555; font-size: 0.7rem;"></div>
-                <div id="tournamentDurationInfo" style="text-align: center; color: #555; font-size: 0.7rem; margin-top: 5px;"></div>
-                <div id="tournamentRoundInfo" style="text-align: center; color: #667eea; font-size: 0.8rem; margin-top: 8px; font-weight: bold;"></div>
+            <!-- Tournament Name (outside card) -->
+            <div id="tournamentNameDisplay" class="hidden" style="text-align: center; color: #667eea; font-size: 1.2rem; font-family: 'Press Start 2P', cursive; margin-bottom: 15px; margin-top: 10px; font-weight: bold; line-height: 1.6;"></div>
+            
+            <!-- Round Info Badge (outside card) -->
+            <div id="tournamentRoundInfo" class="round-info-badge"></div>
+
+            <div id="tournamentInfo" class="config-group hidden" style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%); padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 2px solid rgba(102, 126, 234, 0.3);">
+                <!-- Table Number -->
+                <div id="tournamentTableInfo" style="text-align: center; color: #333; font-size: 1.3rem; font-weight: bold; margin-bottom: 15px;"></div>
+                
+                <!-- Players at Table -->
+                <div id="tablePlayers">
+                    <div id="tablePlayersList" style="display: grid; gap: 8px;"></div>
+                </div>
             </div>
+
+            <!-- Timer Duration (outside card, below) -->
+            <div id="tournamentDurationInfo" class="hidden" style="text-align: center; color: #000; font-size: 0.8rem; margin-bottom: 20px;"></div>
 
             <div class="config-group" id="durationSelector">
                 <label for="timerDuration">Timer Duration (sec):</label>
@@ -65,6 +77,7 @@
                 Put phone on "Do Not Disturb" mode!
             </div>
             
+            <button id="backToTablesBtn" class="start-btn hidden">← Back to Tables</button>
             <button id="startButton" class="start-btn">READY</button>
         </div>
     </div>
@@ -79,7 +92,7 @@
         </div>
         <div class="tap-hint" id="tapHint">Tap anywhere to reset</div>
         <img src="../assets/images/magikarp.gif" alt="Timeout" class="timeout-gif" id="timeoutGif">
-        <div class="settings-hint">Tap anywhere to reset<br>Reload to change settings</div>
+        <div class="settings-hint" id="settingsHint">Tap anywhere to reset<br>Long press to return home</div>
         <img src="../assets/images/pickachu_happy.gif" alt="Happy" class="tap-gif" id="tapGif">
         
     </div>
@@ -90,10 +103,14 @@
             <div class="scoring-modal-header">
                 <div id="tableInfo" style="font-size: 1.2rem; font-weight: bold; margin-bottom: 10px;">Table</div>
                 <div id="modalRoundInfo" style="font-size: 0.9rem; color: #667eea; margin-bottom: 10px;"></div>
+                <div id="graceCountdown" style="font-size: 0.8rem; color: #ef4444; margin-bottom: 10px; font-weight: bold; display: none;"></div>
                 <div style="font-size: 0.8rem; color: #6b7280;">Record wins for this round</div>
             </div>
             <div class="players-scoring" id="playersScoring"></div>
-            <button id="closeScoringBtn" class="close-scoring-btn">Back to Timer</button>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button id="closeScoringBtn" class="close-scoring-btn" style="flex: 1;">Back to Timer</button>
+                <button id="exitToTournamentBtn" class="close-scoring-btn" style="flex: 1; background: #667eea;">Exit to Tournament</button>
+            </div>
         </div>
     </div>
     

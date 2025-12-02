@@ -43,6 +43,10 @@ let isReady = false; // True when on game screen but not started
 let lastTapTime = 0;
 let lastTickSecond = 5;
 const TAP_DEBOUNCE_MS = 250;
+let isRoundInProgress = false; // Track if tournament round is active
+let graceTimer = null; // Timer for auto-closing scoring modal
+let isInGracePeriod = false; // Track if we're in the grace period after round ends
+const GRACE_PERIOD_MS = 30000; // 30 seconds
 
 // Load saved settings from localStorage
 function loadSettings() {
@@ -109,7 +113,6 @@ if (isTournamentMode) {
     tableNumber = localStorage.getItem('tableNumber');
     
     if (!tournamentId || !tableId) {
-        // No tournament data, redirect to selection
         window.location.href = '../pages/tournament-select.html';
     } else {
         // Initialize Firebase
@@ -137,6 +140,11 @@ if (isTournamentMode) {
         // Load tournament settings
         loadTournamentSettings();
     }
+} else {
+    // Practice mode - update hints to indicate long press to return home
+    if (settingsHint) {
+        settingsHint.innerHTML = 'Tap anywhere to reset<br>Long press to return home';
+    }
 }
 
 // Setup tournament UI on start screen
@@ -147,23 +155,187 @@ function setupTournamentUI() {
         durationSelector.classList.add('hidden');
     }
     
-    // Show tournament info
+    // Hide mahjong gif in tournament mode
+    const mahjongGif = document.querySelector('.mahjong-gif');
+    if (mahjongGif) {
+        mahjongGif.style.display = 'none';
+    }
+    
+    // Show tournament info card
     const tournamentInfo = document.getElementById('tournamentInfo');
     if (tournamentInfo) {
         tournamentInfo.classList.remove('hidden');
     }
     
-    // Set up interval to update grace period countdown and round status
-    setInterval(() => {
-        if (isTournamentMode && tablePlayers.length > 0) {
-            updateScoringPanel();
-        }
+    // Show tournament name (outside card)
+    const tournamentNameDisplay = document.getElementById('tournamentNameDisplay');
+    if (tournamentNameDisplay) {
+        tournamentNameDisplay.classList.remove('hidden');
+    }
+    
+    // Show timer duration info (outside card, below)
+    const tournamentDurationInfo = document.getElementById('tournamentDurationInfo');
+    if (tournamentDurationInfo) {
+        tournamentDurationInfo.classList.remove('hidden');
+    }
+    
+    // Show back to tables button in tournament mode
+    const backToTablesBtn = document.getElementById('backToTablesBtn');
+    if (backToTablesBtn) {
+        backToTablesBtn.classList.remove('hidden');
+    }
+    
+    // Set up real-time listener for tournament changes (to detect round start)
+    if (tournamentId) {
+        onSnapshot(doc(db, 'tournaments', tournamentId), (doc) => {
+            if (doc.exists()) {
+                const data = doc.data();
+                const roundInProgress = data.roundInProgress || false;
+                const currentRound = data.currentRound || 0;
+                const tournamentNameDisplay = document.getElementById('tournamentNameDisplay');
+                const tournamentRoundInfo = document.getElementById('tournamentRoundInfo');
+                const tournamentTableInfo = document.getElementById('tournamentTableInfo');
+                const tournamentDurationInfo = document.getElementById('tournamentDurationInfo');
+                
+                // Update global round status
+                const wasRoundInProgress = isRoundInProgress;
+                isRoundInProgress = roundInProgress;
+                
+                // Detect round end - open scoring modal automatically if on game screen
+                if (wasRoundInProgress && !roundInProgress && gameScreen && gameScreen.classList.contains('hidden') === false) {
+                    openScoringModal(true);
+                    startGracePeriod();
+                }
+                
+                // If round status changed and we're in ready state, update screen color
+                if (wasRoundInProgress !== roundInProgress && isReady && !gameScreen.classList.contains('hidden')) {
+                    if (roundInProgress) {
+                        gameScreen.style.backgroundColor = '#4ade80'; // Green - round started!
+                    } else {
+                        gameScreen.style.backgroundColor = '#fbbf24'; // Yellow - waiting
+                    }
+                }
+                
+                // Update tournament info
+                if (tournamentNameDisplay) {
+                    tournamentNameDisplay.textContent = data.name || 'Tournament';
+                }
+                if (tournamentTableInfo) {
+                    tournamentTableInfo.textContent = `Table ${tableNumber}`;
+                }
+                if (tournamentDurationInfo) {
+                    const duration = data.timerDuration || 5;
+                    tournamentDurationInfo.textContent = `Timer: ${duration} seconds`;
+                    timerDuration = duration; // Update global timer duration
+                }
+                
+                // Update round info badge
+                if (tournamentRoundInfo) {
+                    updateRoundInfoBadge(tournamentRoundInfo, currentRound, roundInProgress);
+                }
+                
+                // Update game screen state if already on it
+                if (isReady && gameScreen && !gameScreen.classList.contains('hidden')) {
+                    updateDisplay();
+                }
+            }
+        });
+    }
+}
+
+// Helper function to update round info badge with appropriate styling
+async function updateRoundInfoBadge(badgeElement, currentRound, roundInProgress) {
+    if (!badgeElement) return;
+    
+    if (currentRound === 0) {
+        badgeElement.className = 'round-info-badge no-round';
+        badgeElement.textContent = 'No rounds started';
+        return;
+    }
+    
+    try {
+        const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js");
+        const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
+        let roundStatus = null;
         
-        // Also check round status if in ready state
-        if (isTournamentMode && isReady) {
-            checkRoundStatusForDisplay();
+        roundsSnap.forEach(roundDoc => {
+            const roundData = roundDoc.data();
+            if (roundData.roundNumber === currentRound) {
+                roundStatus = roundData.status;
+            }
+        });
+        
+        // Determine class and text based on round status
+        if (roundStatus === 'staging') {
+            badgeElement.className = 'round-info-badge staging';
+            badgeElement.textContent = `Round ${currentRound} - PREPARING`;
+        } else if (roundStatus === 'in_progress') {
+            badgeElement.className = 'round-info-badge in-progress';
+            badgeElement.textContent = `Round ${currentRound} - IN PROGRESS`;
+        } else if (roundStatus === 'completed') {
+            badgeElement.className = 'round-info-badge completed';
+            badgeElement.textContent = `Round ${currentRound} - COMPLETED`;
+        } else {
+            // Fallback to roundInProgress flag if no round document found
+            if (roundInProgress) {
+                badgeElement.className = 'round-info-badge in-progress';
+                badgeElement.textContent = `Round ${currentRound} - IN PROGRESS`;
+            } else {
+                badgeElement.className = 'round-info-badge staging';
+                badgeElement.textContent = `Round ${currentRound} - PREPARING`;
+            }
         }
-    }, 1000); // Update every second
+    } catch (error) {
+        console.error('Error fetching round status:', error);
+        // Fallback to simple display
+        if (roundInProgress) {
+            badgeElement.className = 'round-info-badge in-progress';
+            badgeElement.textContent = `Round ${currentRound} - IN PROGRESS`;
+        } else {
+            badgeElement.className = 'round-info-badge staging';
+            badgeElement.textContent = `Round ${currentRound} - PREPARING`;
+        }
+    }
+}
+
+// Helper function to get round status text (for scoring modal)
+async function getRoundStatusText(currentRound, roundInProgress) {
+    if (currentRound === 0) {
+        return '';
+    }
+    
+    try {
+        const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js");
+        const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
+        let roundStatus = null;
+        
+        roundsSnap.forEach(roundDoc => {
+            const roundData = roundDoc.data();
+            if (roundData.roundNumber === currentRound) {
+                roundStatus = roundData.status;
+            }
+        });
+        
+        // Determine display text based on round status
+        if (roundStatus === 'staging') {
+            return `Round ${currentRound} - PREPARING`;
+        } else if (roundStatus === 'in_progress') {
+            return `Round ${currentRound} - IN PROGRESS`;
+        } else if (roundStatus === 'completed') {
+            return `Round ${currentRound} - COMPLETED`;
+        } else {
+            // Fallback to roundInProgress flag if no round document found
+            if (roundInProgress) {
+                return `Round ${currentRound} - IN PROGRESS`;
+            } else {
+                return `Round ${currentRound} - PREPARING`;
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching round status:', error);
+        // Fallback to simple display
+        return `Round ${currentRound}${roundInProgress ? ' - IN PROGRESS' : ' - PREPARING'}`;
+    }
 }
 
 // Load tournament settings (called before starting game)
@@ -183,10 +355,14 @@ async function loadTournamentSettings() {
         timerDuration = tournamentData.timerDuration || 5;
         
         // Update UI with tournament info
+        const tournamentNameDisplay = document.getElementById('tournamentNameDisplay');
         const tournamentTableInfo = document.getElementById('tournamentTableInfo');
         const tournamentDurationInfo = document.getElementById('tournamentDurationInfo');
         const tournamentRoundInfo = document.getElementById('tournamentRoundInfo');
         
+        if (tournamentNameDisplay) {
+            tournamentNameDisplay.textContent = tournamentData.name || 'Tournament';
+        }
         if (tournamentTableInfo) {
             tournamentTableInfo.textContent = `Table ${tableNumber}`;
         }
@@ -196,14 +372,59 @@ async function loadTournamentSettings() {
         if (tournamentRoundInfo) {
             const currentRound = tournamentData.currentRound || 0;
             const roundInProgress = tournamentData.roundInProgress || false;
-            if (currentRound > 0) {
-                tournamentRoundInfo.textContent = `Round ${currentRound}${roundInProgress ? ' (In Progress)' : ' (Completed)'}`;
-            }
+            
+            // Set initial round status
+            isRoundInProgress = roundInProgress;
+            
+            // Update round info badge
+            await updateRoundInfoBadge(tournamentRoundInfo, currentRound, roundInProgress);
         }
+        
+        // Load and display players at this table
+        await loadTablePlayers();
         
     } catch (error) {
         console.error('Error loading tournament settings:', error);
         alert('Error loading tournament: ' + error.message);
+    }
+}
+
+// Load players assigned to this table
+async function loadTablePlayers() {
+    try {
+        const tableDoc = await getDoc(doc(db, 'tournaments', tournamentId, 'tables', tableId));
+        if (!tableDoc.exists()) return;
+        
+        const tableData = tableDoc.data();
+        const positions = tableData.positions || {};
+        const windSymbols = { East: '東', South: '南', West: '西', North: '北' };
+        
+        const tablePlayersList = document.getElementById('tablePlayersList');
+        if (!tablePlayersList) return;
+        
+        // Create list of players with their positions
+        const playersHTML = [];
+        for (const position of ['East', 'South', 'West', 'North']) {
+            const playerId = positions[position];
+            if (playerId) {
+                const playerDoc = await getDoc(doc(db, 'tournaments', tournamentId, 'players', playerId));
+                if (playerDoc.exists()) {
+                    const playerData = playerDoc.data();
+                    const windSymbol = windSymbols[position] || '';
+                    playersHTML.push(`
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: rgba(255,255,255,0.5); border-radius: 6px;">
+                            <span style="font-size: 0.7rem; color: #333;">${playerData.name}</span>
+                            <span style="font-size: 0.9rem; font-weight: bold; color: #667eea;">${windSymbol} ${position}</span>
+                        </div>
+                    `);
+                }
+            }
+        }
+        
+        tablePlayersList.innerHTML = playersHTML.join('');
+        
+    } catch (error) {
+        console.error('Error loading table players:', error);
     }
 }
 
@@ -238,8 +459,7 @@ async function loadTournamentData() {
                         tablePlayers.push(playerData);
                     }
                     
-                    // Re-render scoring panel (force update because player data changed)
-                    forceUpdateScoring = true;
+                    // Re-render scoring panel
                     updateScoringPanel();
                 }
             });
@@ -254,207 +474,9 @@ async function loadTournamentData() {
     }
 }
 
-// Check if score editing is currently allowed
-let canEditScores = true;
-let scoreEditStatus = '';
-let lastScoreEditStatus = '';
-let forceUpdateScoring = false;
-let cachedCurrentRoundId = null;
-let cachedRoundInProgress = false;
-
-// Check if timer can be started (tournament mode only)
-async function canStartTimer() {
-    if (!isTournamentMode || !db || !tournamentId) {
-        return true; // Allow in practice mode
-    }
-    
-    try {
-        const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js");
-        
-        const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
-        if (!tournamentDoc.exists()) {
-            return false;
-        }
-        
-        const tournamentData = tournamentDoc.data();
-        const currentRound = tournamentData.currentRound || 0;
-        
-        if (currentRound === 0) {
-            return false; // No round started
-        }
-        
-        // Find the current round document
-        const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
-        let currentRoundStatus = null;
-        
-        roundsSnap.forEach(roundDoc => {
-            const roundData = roundDoc.data();
-            if (roundData.roundNumber === currentRound) {
-                currentRoundStatus = roundData.status;
-            }
-        });
-        
-        // Only allow starting if round is in progress
-        return currentRoundStatus === 'in_progress';
-    } catch (error) {
-        console.error('Error checking round status:', error);
-        return false;
-    }
-}
-
-// Check round status and update display message
-async function checkRoundStatusForDisplay() {
-    if (!isTournamentMode || !db || !tournamentId) {
-        settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>Long press to record wins';
-        return;
-    }
-    
-    try {
-        const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js");
-        
-        const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
-        if (!tournamentDoc.exists()) {
-            settingsHint.innerHTML = '⚠️ Tournament not found<br><br>Please return to table selection';
-            return;
-        }
-        
-        const tournamentData = tournamentDoc.data();
-        const currentRound = tournamentData.currentRound || 0;
-        
-        if (currentRound === 0) {
-            settingsHint.innerHTML = '⏳ Waiting for round to start<br><br>Please wait for the organizer';
-            return;
-        }
-        
-        // Find the current round document
-        const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
-        let currentRoundStatus = null;
-        
-        roundsSnap.forEach(roundDoc => {
-            const roundData = roundDoc.data();
-            if (roundData.roundNumber === currentRound) {
-                currentRoundStatus = roundData.status;
-            }
-        });
-        
-        if (currentRoundStatus === 'in_progress') {
-            settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>Long press to record wins';
-        } else if (currentRoundStatus === 'staging') {
-            settingsHint.innerHTML = '⏳ Round is staging<br><br>Waiting for organizer to<br>start the round...';
-        } else if (currentRoundStatus === 'completed') {
-            settingsHint.innerHTML = '🏁 Round has ended<br><br>Waiting for next round...';
-        } else {
-            settingsHint.innerHTML = '⏳ Waiting for round to start<br><br>Please wait for the organizer';
-        }
-    } catch (error) {
-        console.error('Error checking round status for display:', error);
-        settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>Long press to record wins';
-    }
-}
-
-async function checkScoreEditingAllowed() {
-    if (!isTournamentMode || !db || !tournamentId) {
-        canEditScores = false;
-        scoreEditStatus = '';
-        return;
-    }
-    
-    try {
-        const { getDocs, collection } = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js");
-        
-        const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
-        if (!tournamentDoc.exists()) {
-            canEditScores = false;
-            scoreEditStatus = '';
-            cachedCurrentRoundId = null;
-            cachedRoundInProgress = false;
-            return;
-        }
-        
-        const tournamentData = tournamentDoc.data();
-        const currentRound = tournamentData.currentRound || 0;
-        const roundInProgress = tournamentData.roundInProgress || false;
-        
-        if (currentRound === 0) {
-            canEditScores = false;
-            scoreEditStatus = '';
-            cachedCurrentRoundId = null;
-            cachedRoundInProgress = false;
-            return;
-        }
-        
-        // Find the current round document
-        const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
-        let currentRoundData = null;
-        
-        roundsSnap.forEach(roundDoc => {
-            const roundData = roundDoc.data();
-            if (roundData.roundNumber === currentRound) {
-                currentRoundData = { id: roundDoc.id, ...roundData };
-            }
-        });
-        
-        if (!currentRoundData) {
-            canEditScores = false;
-            scoreEditStatus = '';
-            cachedCurrentRoundId = null;
-            cachedRoundInProgress = false;
-            return;
-        }
-        
-        if (currentRoundData.status === 'in_progress') {
-            canEditScores = true;
-            scoreEditStatus = '';
-            cachedCurrentRoundId = currentRoundData.id;
-            cachedRoundInProgress = true;
-        } else if (currentRoundData.status === 'completed' && currentRoundData.endedAt) {
-            cachedCurrentRoundId = currentRoundData.id;
-            cachedRoundInProgress = false;
-            // Check if within 15 second grace period
-            const now = Date.now();
-            const endedAt = currentRoundData.endedAt.toMillis();
-            const gracePeriodMs = 15000; // 15 seconds
-            const elapsed = now - endedAt;
-            
-            if (elapsed < gracePeriodMs) {
-                canEditScores = true;
-                const remaining = Math.ceil((gracePeriodMs - elapsed) / 1000);
-                scoreEditStatus = `⏱️ Grace period: ${remaining}s`;
-            } else {
-                canEditScores = false;
-                scoreEditStatus = '🔒 Editing locked';
-                cachedCurrentRoundId = currentRoundData.id;
-                cachedRoundInProgress = false;
-            }
-        } else {
-            canEditScores = false;
-            scoreEditStatus = '🔒 Editing locked';
-            cachedCurrentRoundId = null;
-            cachedRoundInProgress = false;
-        }
-    } catch (error) {
-        console.error('Error checking score editing status:', error);
-        canEditScores = false;
-        scoreEditStatus = '';
-        cachedCurrentRoundId = null;
-        cachedRoundInProgress = false;
-    }
-}
-
 // Update scoring panel with current player data
-async function updateScoringPanel() {
+function updateScoringPanel() {
     if (!isTournamentMode || tablePlayers.length === 0) return;
-    
-    // Check if editing is allowed
-    await checkScoreEditingAllowed();
-    
-    // Only update if status changed or forced to avoid interfering with taps
-    const currentStatusKey = `${canEditScores}-${scoreEditStatus}`;
-    if (currentStatusKey === lastScoreEditStatus && playersScoring.innerHTML && !forceUpdateScoring) {
-        return; // No change, skip re-render
-    }
-    lastScoreEditStatus = currentStatusKey;
-    forceUpdateScoring = false;
     
     // Sort players by position order (East, South, West, North)
     const positionOrder = { 'East': 0, 'South': 1, 'West': 2, 'North': 3 };
@@ -464,17 +486,14 @@ async function updateScoringPanel() {
     
     const windSymbols = { East: '東', South: '南', West: '西', North: '北' };
     
-    const disabledStyle = canEditScores ? '' : 'opacity: 0.3; pointer-events: none;';
-    const statusHTML = scoreEditStatus ? `<div style="text-align: center; padding: 10px; background: ${canEditScores ? '#fef3c7' : '#fee2e2'}; color: ${canEditScores ? '#92400e' : '#991b1b'}; border-radius: 8px; margin-bottom: 10px; font-size: 13px; font-weight: bold;">${scoreEditStatus}</div>` : '';
-    
-    playersScoring.innerHTML = statusHTML + sortedPlayers.map(player => `
+    playersScoring.innerHTML = sortedPlayers.map(player => `
         <div class="player-score-card">
             <div class="player-score-name">${player.name}</div>
             <div class="player-score-position">${windSymbols[player.position]} ${player.position}</div>
             <div class="score-display">${player.wins || 0} wins</div>
-            <div class="score-controls" style="${disabledStyle}">
-                <button class="score-btn win" onclick="event.stopPropagation(); adjustScore('${player.id}', 1)" ${canEditScores ? '' : 'disabled'}>+</button>
-                <button class="score-btn lose" onclick="event.stopPropagation(); adjustScore('${player.id}', -1)" ${canEditScores ? '' : 'disabled'}>−</button>
+            <div class="score-controls">
+                <button class="score-btn win" onclick="event.stopPropagation(); adjustScore('${player.id}', 1)">+</button>
+                <button class="score-btn lose" onclick="event.stopPropagation(); adjustScore('${player.id}', -1)">−</button>
             </div>
         </div>
     `).join('');
@@ -484,14 +503,13 @@ async function updateScoringPanel() {
 window.adjustScore = async function(playerId, delta) {
     if (!isTournamentMode || !db) return;
     
-    // Use cached validation status instead of re-checking
-    if (!canEditScores) {
-        alert('❌ Score editing disabled\n\nYou can only update scores:\n• During an active round\n• Within 15 seconds after round ends');
+    // Only allow score adjustments during active round or grace period
+    if (!isRoundInProgress && !isInGracePeriod) {
         return;
     }
     
     try {
-        const { serverTimestamp, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js");
+        const { serverTimestamp, getDocs, collection, query, where } = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js");
         
         const playerRef = doc(db, 'tournaments', tournamentId, 'players', playerId);
         
@@ -504,25 +522,44 @@ window.adjustScore = async function(playerId, delta) {
             updates.lastWinAt = serverTimestamp();
         }
         
-        // Update player document
         await updateDoc(playerRef, updates);
         
-        // Also update round participants if round is in progress and we have cached round ID
-        if (cachedRoundInProgress && cachedCurrentRoundId) {
-            // Query for this specific player's participant record
-            const participantsRef = collection(db, 'tournaments', tournamentId, 'rounds', cachedCurrentRoundId, 'participants');
-            const participantQuery = query(participantsRef, where('playerId', '==', playerId));
-            const participantSnap = await getDocs(participantQuery);
+        // Also update round participants if round is in progress
+        const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
+        if (tournamentDoc.exists()) {
+            const tournamentData = tournamentDoc.data();
+            const currentRound = tournamentData.currentRound || 0;
+            const roundInProgress = tournamentData.roundInProgress || false;
             
-            if (!participantSnap.empty) {
-                const participantDoc = participantSnap.docs[0];
-                const participantUpdates = {
-                    wins: increment(delta)
-                };
-                if (delta > 0) {
-                    participantUpdates.lastWinAt = serverTimestamp();
+            if (currentRound > 0 && roundInProgress) {
+                // Find the current round document
+                const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
+                let currentRoundId = null;
+                
+                roundsSnap.forEach(roundDoc => {
+                    const roundData = roundDoc.data();
+                    if (roundData.roundNumber === currentRound && roundData.status === 'in_progress') {
+                        currentRoundId = roundDoc.id;
+                    }
+                });
+                
+                if (currentRoundId) {
+                    // Find and update this player's participant record
+                    const participantsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds', currentRoundId, 'participants'));
+                    
+                    participantsSnap.forEach(async (participantDoc) => {
+                        const participantData = participantDoc.data();
+                        if (participantData.playerId === playerId) {
+                            const participantUpdates = {
+                                wins: increment(delta)
+                            };
+                            if (delta > 0) {
+                                participantUpdates.lastWinAt = serverTimestamp();
+                            }
+                            await updateDoc(participantDoc.ref, participantUpdates);
+                        }
+                    });
                 }
-                await updateDoc(participantDoc.ref, participantUpdates);
             }
         }
         
@@ -813,16 +850,21 @@ function updateDisplay() {
     
     // Update hint text based on state
     if (isReady) {
-        // Ready state - show "tap to start"
+        // Ready state - show "tap to start" or "waiting for round"
         timerText.style.opacity = '0';
         tapHint.classList.remove('visible');
         timeoutGif.classList.remove('visible');
         
         if (isTournamentMode) {
-            // Check if round is in progress - if not, show waiting message
-            checkRoundStatusForDisplay();
+            if (isRoundInProgress) {
+                settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>Long press to record wins';
+                gameScreen.style.backgroundColor = '#4ade80'; // Green when ready
+            } else {
+                settingsHint.innerHTML = 'WAITING FOR ROUND TO START<br><br>Ask the organizer to start a round';
+                gameScreen.style.backgroundColor = '#fbbf24'; // Yellow/amber when waiting
+            }
         } else {
-            settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>iPhone users can rotate<br>the phone in landscape mode<br>and remove all other tabs for<br>maximum tap real estate.<br><br>Sound not working?<br>Turn off Silent Mode<br>and reload page.';
+            settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>Long press to return home<br><br>iPhone users can rotate<br>the phone in landscape mode<br>and remove all other tabs for<br>maximum tap real estate.<br><br>Sound not working?<br>Turn off Silent Mode<br>and reload page.';
         }
         settingsHint.classList.add('visible');
     } else if (currentTime <= 0) {
@@ -832,9 +874,13 @@ function updateDisplay() {
         timeoutGif.classList.add('visible');
         
         if (isTournamentMode) {
-            settingsHint.innerHTML = 'Tap anywhere to reset timer.<br>Long press to record wins.';
+            if (isRoundInProgress || isInGracePeriod) {
+                settingsHint.innerHTML = 'Tap anywhere to reset timer.<br>Long press to record wins.';
+            } else {
+                settingsHint.innerHTML = 'Tap anywhere to reset timer.<br><br>Round not active - scoring disabled.';
+            }
         } else {
-            settingsHint.innerHTML = 'Tap anywhere to reset timer.<br>Reload to change settings.';
+            settingsHint.innerHTML = 'Tap anywhere to reset timer.<br>Long press to return home.';
         }
         settingsHint.classList.add('visible');
     } else {
@@ -896,7 +942,14 @@ startButton.addEventListener('click', async () => {
     gameScreen.classList.remove('hidden');
     isReady = true;
     currentTime = 0;
-    gameScreen.style.backgroundColor = '#4ade80'; // Green
+    
+    // Set initial color based on mode and round status
+    if (isTournamentMode && !isRoundInProgress) {
+        gameScreen.style.backgroundColor = '#fbbf24'; // Yellow/amber when waiting
+    } else {
+        gameScreen.style.backgroundColor = '#4ade80'; // Green when ready
+    }
+    
     updateDisplay();
 });
 
@@ -922,16 +975,80 @@ function cancelLongPress() {
 
 function handleLongPress() {
     if (isTournamentMode) {
-        // Open scoring modal
-        openScoringModal();
+        // Only allow score recording during active round or grace period
+        if (isRoundInProgress || isInGracePeriod) {
+            openScoringModal(false);
+        }
     } else {
         // Navigate back to home in practice mode
         window.location.href = '../index.html';
     }
 }
 
-async function openScoringModal() {
+function startGracePeriod() {
+    // Clear any existing grace timer
+    if (graceTimer) {
+        clearInterval(graceTimer);
+    }
+    
+    isInGracePeriod = true;
+    let remainingSeconds = 30;
+    const graceCountdown = document.getElementById('graceCountdown');
+    
+    if (graceCountdown) {
+        graceCountdown.style.display = 'block';
+        graceCountdown.style.color = '#ef4444'; // Reset to red
+        graceCountdown.textContent = `Auto-closing in ${remainingSeconds}s`;
+    }
+    
+    graceTimer = setInterval(() => {
+        remainingSeconds--;
+        
+        if (graceCountdown) {
+            if (remainingSeconds > 0) {
+                graceCountdown.textContent = `Auto-closing in ${remainingSeconds}s`;
+            } else {
+                graceCountdown.textContent = 'Closing...';
+            }
+        }
+        
+        if (remainingSeconds <= 0) {
+            clearInterval(graceTimer);
+            graceTimer = null;
+            isInGracePeriod = false;
+            // Grace period expired - return to tournament select page
+            window.location.href = '../pages/tournament-select.html';
+        }
+    }, 1000);
+}
+
+function stopGracePeriod() {
+    if (graceTimer) {
+        clearInterval(graceTimer);
+        graceTimer = null;
+    }
+    
+    isInGracePeriod = false;
+    
+    const graceCountdown = document.getElementById('graceCountdown');
+    if (graceCountdown) {
+        graceCountdown.style.display = 'none';
+    }
+}
+
+async function openScoringModal(autoOpened = false) {
     if (scoringModal) {
+        // Stop the timer
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        
+        // Set to timeout state (stops the timer)
+        currentTime = 0;
+        handleTimeout();
+        updateDisplay();
+        
         scoringModal.classList.remove('hidden');
         
         // Update round info in modal
@@ -944,7 +1061,8 @@ async function openScoringModal() {
                 const modalRoundInfo = document.getElementById('modalRoundInfo');
                 
                 if (modalRoundInfo && currentRound > 0) {
-                    modalRoundInfo.textContent = `Round ${currentRound}${roundInProgress ? ' (In Progress)' : ' (Completed)'}`;
+                    const statusText = await getRoundStatusText(currentRound, roundInProgress);
+                    modalRoundInfo.textContent = statusText;
                 }
             }
         }
@@ -954,6 +1072,18 @@ async function openScoringModal() {
 function closeScoringModal() {
     if (scoringModal) {
         scoringModal.classList.add('hidden');
+        
+        // Stop grace period timer
+        stopGracePeriod();
+        
+        // Ensure timer is in timeout state (stopped, showing "tap anywhere to reset")
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        currentTime = 0;
+        handleTimeout();
+        updateDisplay();
     }
 }
 
@@ -979,9 +1109,29 @@ if (closeScoringBtn) {
         e.stopPropagation();
         closeScoringModal();
     });
+    
+    // Exit to tournament button
+    const exitToTournamentBtn = document.getElementById('exitToTournamentBtn');
+    if (exitToTournamentBtn) {
+        exitToTournamentBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Navigate to tournament select page
+            window.location.href = '../pages/tournament-select.html';
+        });
+    }
 }
 
-gameScreen.addEventListener('click', async (e) => {
+// Back to tables button (on start screen)
+const backToTablesBtn = document.getElementById('backToTablesBtn');
+if (backToTablesBtn) {
+    backToTablesBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Navigate to tournament select page
+        window.location.href = '../pages/tournament-select.html';
+    });
+}
+
+gameScreen.addEventListener('click', (e) => {
     e.preventDefault();
     
     // Don't handle tap if clicking on scoring modal
@@ -997,13 +1147,13 @@ gameScreen.addEventListener('click', async (e) => {
         showTapGif(e.clientX, e.clientY);
         
         if (isReady) {
-            // First tap after START GAME - check if round is in progress
-            const canStart = await canStartTimer();
-            if (!canStart) {
-                alert('⚠️ Cannot start timer\n\nThe round must be in progress.\n\nPlease wait for the organizer to start the round.');
+            // In tournament mode, check if round is in progress
+            if (isTournamentMode && !isRoundInProgress) {
+                // Don't start timer if no round active
                 return;
             }
             
+            // First tap after START GAME - begin countdown
             isReady = false;
             playReset(); // Play sound when starting
             startTimer();
@@ -1014,7 +1164,7 @@ gameScreen.addEventListener('click', async (e) => {
     }
 });
 
-gameScreen.addEventListener('touchstart', async (e) => {
+gameScreen.addEventListener('touchstart', (e) => {
     // Don't handle if touching scoring modal
     if (e.target.closest('#scoringModal')) {
         return;
@@ -1035,13 +1185,13 @@ gameScreen.addEventListener('touchstart', async (e) => {
         }
         
         if (isReady) {
-            // First tap after START GAME - check if round is in progress
-            const canStart = await canStartTimer();
-            if (!canStart) {
-                alert('⚠️ Cannot start timer\n\nThe round must be in progress.\n\nPlease wait for the organizer to start the round.');
+            // In tournament mode, check if round is in progress
+            if (isTournamentMode && !isRoundInProgress) {
+                // Don't start timer if no round active
                 return;
             }
             
+            // First tap after START GAME - begin countdown
             isReady = false;
             playReset(); // Play sound when starting
             startTimer();
