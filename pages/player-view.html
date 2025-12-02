@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Assignment - Speed Jong</title>
     <link rel="icon" type="image/jpeg" href="../assets/images/favicon.jpg">
+    <link rel="stylesheet" href="../css/style.css">
     <style>
         * {
             margin: 0;
@@ -13,7 +14,7 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Press Start 2P', cursive;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
@@ -35,7 +36,11 @@
         h1 {
             color: #667eea;
             margin-bottom: 30px;
-            font-size: 28px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            line-height: 1.4;
+            white-space: nowrap;
+            padding: 0 10px;
         }
 
         .player-select {
@@ -45,7 +50,8 @@
         select {
             width: 100%;
             padding: 15px;
-            font-size: 18px;
+            font-size: 0.8rem;
+            font-family: 'Press Start 2P', cursive;
             border: 2px solid #e5e7eb;
             border-radius: 12px;
             background: white;
@@ -72,14 +78,16 @@
         }
 
         .table-info {
-            font-size: 48px;
+            font-size: 2rem;
             font-weight: bold;
             margin: 20px 0;
+            font-family: 'Press Start 2P', cursive;
         }
 
         .position-info {
-            font-size: 32px;
+            font-size: 1.3rem;
             margin: 15px 0;
+            font-family: 'Press Start 2P', cursive;
         }
 
         .wind-symbol {
@@ -88,8 +96,9 @@
         }
 
         .not-assigned-message {
-            font-size: 18px;
-            font-style: italic;
+            font-size: 0.8rem;
+            font-family: 'Press Start 2P', cursive;
+            line-height: 1.5;
         }
 
         .other-players {
@@ -99,9 +108,11 @@
         }
 
         .other-players h3 {
-            font-size: 16px;
+            font-size: 0.8rem;
             margin-bottom: 15px;
             opacity: 0.9;
+            font-family: 'Press Start 2P', cursive;
+            line-height: 1.5;
         }
 
         .player-list {
@@ -111,16 +122,19 @@
 
         .player-item {
             background: rgba(255, 255, 255, 0.2);
-            padding: 10px;
+            padding: 12px;
             border-radius: 8px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 0.65rem;
+            line-height: 1.6;
         }
-
-        .loading {
-            color: #6b7280;
-            font-size: 18px;
+        
+        .player-item span:last-child {
+            text-align: right;
+            white-space: nowrap;
         }
 
         .timer-link {
@@ -129,20 +143,20 @@
 
         .timer-link a {
             display: inline-block;
-            background: #10b981;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 15px 30px;
-            border-radius: 12px;
+            padding: 1rem;
+            border-radius: 10px;
             text-decoration: none;
-            font-weight: 600;
-            font-size: 18px;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 0.8rem;
             transition: all 0.2s;
+            line-height: 1.5;
         }
 
         .timer-link a:hover {
-            background: #059669;
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
         }
 
         @media (max-width: 600px) {
@@ -151,19 +165,19 @@
             }
             
             h1 {
-                font-size: 24px;
+                font-size: 1rem;
             }
             
             .table-info {
-                font-size: 36px;
+                font-size: 1.5rem;
             }
             
             .position-info {
-                font-size: 24px;
+                font-size: 1rem;
             }
             
             .wind-symbol {
-                font-size: 48px;
+                font-size: 2rem;
             }
         }
 
@@ -195,7 +209,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🀄 Speed Jong Tournament</h1>
+        <h1 id="tournamentTitle">Seat Assignments</h1>
         
         <div class="player-select">
             <select id="playerSelect">
@@ -203,9 +217,7 @@
             </select>
         </div>
 
-        <div id="content">
-            <div class="loading">Select your name to see your assignment</div>
-        </div>
+        <div id="content"></div>
 
         <div class="timer-link">
             <a href="tournament-select.html">← Back to Tournament</a>
@@ -328,11 +340,21 @@
             const playerSelect = document.getElementById('playerSelect');
             playerSelect.innerHTML = '<option value="">Select your name...</option>';
             
+            // Collect all players and sort alphabetically
+            const playersList = [];
             playersSnap.forEach((doc) => {
                 playersData[doc.id] = { id: doc.id, ...doc.data() };
+                playersList.push({ id: doc.id, name: doc.data().name });
+            });
+            
+            // Sort by name alphabetically (case-insensitive)
+            playersList.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+            
+            // Add sorted players to dropdown
+            playersList.forEach(player => {
                 const option = document.createElement('option');
-                option.value = doc.id;
-                option.textContent = doc.data().name;
+                option.value = player.id;
+                option.textContent = player.name;
                 playerSelect.appendChild(option);
             });
         }
@@ -411,7 +433,7 @@
             const otherPlayersHTML = otherPlayers.map(p => `
                 <div class="player-item">
                     <span>${p.name}</span>
-                    <span>${p.symbol} ${p.position}</span>
+                    <span>${p.position}</span>
                 </div>
             `).join('');
 
@@ -419,7 +441,6 @@
                 <div class="assignment-card">
                     <div>You are assigned to:</div>
                     <div class="table-info">Table ${tableData.tableNumber}</div>
-                    <div class="wind-symbol">${windSymbol}</div>
                     <div class="position-info">${position}</div>
                     
                     ${otherPlayers.length > 0 ? `

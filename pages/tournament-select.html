@@ -8,66 +8,40 @@
     <link rel="icon" type="image/jpeg" href="../assets/images/favicon.jpg">
     <link rel="stylesheet" href="../css/style.css">
     <style>
-        .table-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-            gap: 12px;
-            margin-top: 20px;
+        #tableSelect {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23667eea' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 15px center;
+            padding-right: 40px;
         }
 
-        .table-button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 12px;
-            padding: 20px 15px;
-            font-size: 18px;
+        #tableSelect:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
+
+        #pageTitle {
+            font-size: 1.3rem;
+            word-wrap: normal;
+            overflow-wrap: normal;
+            line-height: 1.4;
+            max-width: 100%;
+            padding: 0 10px;
+            color: #667eea;
             font-weight: bold;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-family: 'Press Start 2P', cursive;
+            text-align: center;
+            margin: 0;
         }
-
-        .table-button:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-            border-color: rgba(255, 255, 255, 0.6);
-        }
-
-        .table-button:active {
-            transform: translateY(-1px);
-        }
-
-        .table-number {
-            font-size: 2rem;
-            margin-bottom: 5px;
-            line-height: 1.2;
-        }
-
-        .table-label {
-            font-size: 0.6rem;
-            opacity: 0.9;
-            line-height: 1.5;
+        
+        #pageTitleContainer {
+            margin-bottom: 30px;
         }
         
         /* Scrollbar styling for many tables */
-        #tablesContainer::-webkit-scrollbar {
-            width: 8px;
-        }
-        
-        #tablesContainer::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-        }
-        
-        #tablesContainer::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 4px;
-        }
-        
-        #tablesContainer::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.5);
-        }
 
         .loading {
             text-align: center;
@@ -135,7 +109,7 @@
             transform: translateY(0);
         }
 
-        #roomCodeEntry {
+        #tournamentCodeEntry {
             text-align: center;
             margin-bottom: 30px;
             display: flex;
@@ -143,7 +117,7 @@
             align-items: center;
         }
 
-        #roomCodeInput {
+        #tournamentCodeInput {
             padding: 15px 20px;
             font-size: 1.2rem;
             border-radius: 12px;
@@ -158,14 +132,14 @@
             transition: all 0.2s;
         }
 
-        #roomCodeInput:focus {
+        #tournamentCodeInput:focus {
             outline: none;
             border-color: white;
             background: white;
             box-shadow: 0 0 20px rgba(255,255,255,0.3);
         }
 
-        #roomCodeInput::placeholder {
+        #tournamentCodeInput::placeholder {
             letter-spacing: 2px;
             font-size: 0.8rem;
         }
@@ -284,10 +258,11 @@
             background: white;
             border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: 16px;
-            padding: 40px;
+            padding: 30px 20px;
             text-align: center;
             color: #1f2937;
-            font-size: 18px;
+            font-size: 0.75rem;
+            line-height: 1.8;
             margin-top: 30px;
         }
         body {
@@ -300,28 +275,37 @@
 <body>
     <div class="screen">
         <div class="container">
-            <h1 id="pageTitle">Enter Room Code</h1>
+            <div id="pageTitleContainer">
+                <div id="pageTitlePrefix" style="font-size: 0.9rem; color: #9ca3af; text-align: center; margin-bottom: 5px; line-height: 1.4;">Enter Tournament Code</div>
+                <h1 id="pageTitle" style="display: none;"></h1>
+            </div>
             
-            <div id="roomCodeEntry">
+            <div id="tournamentCodeEntry">
                 <input type="text" 
-                       id="roomCodeInput" 
+                       id="tournamentCodeInput" 
                        placeholder="XXXX" 
                        maxlength="4" 
                        autocomplete="off"
                        spellcheck="false">
                 <div id="errorMessage"></div>
                 <button id="joinButton">Join Tournament</button>
+                <a href="../index.html" id="backToHomeBtn" class="tournament-btn" style="margin-top: 15px; background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);">← Back</a>
             </div>
             
             <div id="tournamentName"></div>
             <div id="roundInfo"></div>
 
-            <div id="tablesContainer" style="max-height: 60vh; overflow-y: auto; padding-right: 10px; display: none;">
-                <div class="loading">Loading tables...</div>
+            <div id="tablesContainer" style="display: none;">
+                <div class="form-group" style="margin-top: 20px;">
+                    <select id="tableSelect" style="width: 100%; padding: 15px; font-size: 0.8rem; border-radius: 10px; border: 2px solid #e5e7eb; background-color: white; font-family: 'Press Start 2P', cursive; text-align: center;">
+                        <option value="">Choose your table...</option>
+                    </select>
+                </div>
+                <div id="noTablesMessage" class="no-tables" style="display: none;"></div>
             </div>
 
             <div id="tournamentActions" class="button-group" style="display: none;">
-                <a href="#" id="viewAssignmentLink" class="tournament-btn">View Seat Assignment</a>
+                <a href="#" id="viewAssignmentLink" class="tournament-btn">Seat Assignments</a>
                 <a href="#" id="leaderboardLink" class="tournament-btn">Leaderboard</a>
                 <button id="exitButton">Exit Tournament</button>
             </div>
@@ -359,7 +343,7 @@
         let currentTournamentId = null;
         let currentTournamentData = null;
 
-        const roomCodeInput = document.getElementById('roomCodeInput');
+        const tournamentCodeInput = document.getElementById('tournamentCodeInput');
         const joinButton = document.getElementById('joinButton');
         const exitButton = document.getElementById('exitButton');
         const errorMessage = document.getElementById('errorMessage');
@@ -381,30 +365,30 @@
             window.location.href = '../index.html';
         });
 
-        // Auto-uppercase room code input
-        roomCodeInput.addEventListener('input', (e) => {
+        // Auto-uppercase tournament code input
+        tournamentCodeInput.addEventListener('input', (e) => {
             e.target.value = e.target.value.toUpperCase();
             errorMessage.textContent = '';
         });
 
         // Handle Enter key
-        roomCodeInput.addEventListener('keypress', (e) => {
+        tournamentCodeInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 joinButton.click();
             }
         });
 
-        // Join tournament with room code
+        // Join tournament with tournament code
         joinButton.addEventListener('click', async () => {
-            const roomCode = roomCodeInput.value.trim().toUpperCase();
+            const tournamentCode = tournamentCodeInput.value.trim().toUpperCase();
             
             // Validate format
-            if (roomCode.length !== 4) {
+            if (tournamentCode.length !== 4) {
                 errorMessage.textContent = 'Please enter a 4-character code';
                 return;
             }
 
-            if (!/^[A-Z0-9]{4}$/.test(roomCode)) {
+            if (!/^[A-Z0-9]{4}$/.test(tournamentCode)) {
                 errorMessage.textContent = 'Code must contain only letters and numbers';
                 return;
             }
@@ -414,19 +398,19 @@
             errorMessage.textContent = '';
 
             try {
-                // Find tournament by room code (case-insensitive)
+                // Find tournament by tournament code (case-insensitive)
                 const tournamentsSnap = await getDocs(collection(db, 'tournaments'));
                 let foundTournament = null;
 
                 tournamentsSnap.forEach((doc) => {
                     const data = doc.data();
-                    if (data.roomCode?.toUpperCase() === roomCode) {
+                    if (data.tournamentCode?.toUpperCase() === tournamentCode) {
                         foundTournament = { id: doc.id, ...data };
                     }
                 });
 
                 if (!foundTournament) {
-                    errorMessage.textContent = 'Invalid room code';
+                    errorMessage.textContent = 'Invalid tournament code';
                     joinButton.disabled = false;
                     joinButton.textContent = 'Join Tournament';
                     return;
@@ -447,11 +431,14 @@
                 // Save tournament ID for other pages
                 localStorage.setItem('tournamentId', foundTournament.id);
 
-                // Hide room code entry, show tournament info
-                document.getElementById('roomCodeEntry').style.display = 'none';
-                pageTitle.textContent = 'Select Your Table';
-                tournamentName.textContent = foundTournament.name;
-                tournamentName.style.display = 'block';
+                // Hide tournament code entry, show tournament info
+                document.getElementById('tournamentCodeEntry').style.display = 'none';
+                const nameStartsWithThe = foundTournament.name.toLowerCase().startsWith('the ');
+                const prefix = nameStartsWithThe ? 'Welcome to' : 'Welcome to the';
+                document.getElementById('pageTitlePrefix').textContent = prefix;
+                document.getElementById('pageTitle').textContent = foundTournament.name;
+                document.getElementById('pageTitle').style.display = 'block';
+                tournamentName.style.display = 'none'; // Hide separate tournament name display
                 
                 // Set up real-time tournament listener for round updates
                 setupTournamentListener(foundTournament.id);
@@ -578,10 +565,13 @@
                         if (data.status === 'active') {
                             currentTournamentId = savedTournamentId;
                             currentTournamentData = { id: savedTournamentId, ...data };
-                            document.getElementById('roomCodeEntry').style.display = 'none';
-                            pageTitle.textContent = 'Select Your Table';
-                            tournamentName.textContent = data.name;
-                            tournamentName.style.display = 'block';
+                            document.getElementById('tournamentCodeEntry').style.display = 'none';
+                            const nameStartsWithThe = data.name.toLowerCase().startsWith('the ');
+                            const prefix = nameStartsWithThe ? 'Welcome to' : 'Welcome to the';
+                            document.getElementById('pageTitlePrefix').textContent = prefix;
+                            document.getElementById('pageTitle').textContent = data.name;
+                            document.getElementById('pageTitle').style.display = 'block';
+                            tournamentName.style.display = 'none'; // Hide separate tournament name display
                             setupTournamentListener(savedTournamentId);
                             updateRoundInfo(data);
                             setupTournamentLinks(savedTournamentId);
@@ -597,14 +587,17 @@
         function loadTables() {
             try {
                 tablesContainer.style.display = 'block';
+                const tableSelect = document.getElementById('tableSelect');
+                const noTablesMessage = document.getElementById('noTablesMessage');
                 
                 const tablesRef = collection(db, 'tournaments', currentTournamentId, 'tables');
                 
                 // Set up real-time listener for table changes
                 onSnapshot(tablesRef, (snapshot) => {
                     if (snapshot.empty) {
-                        tablesContainer.innerHTML = 
-                            '<div class="no-tables">No tables set up yet. Please wait for the organizer.</div>';
+                        tableSelect.style.display = 'none';
+                        noTablesMessage.style.display = 'block';
+                        noTablesMessage.textContent = 'No tables set up yet. Please wait for the organizer.';
                         return;
                     }
 
@@ -619,45 +612,56 @@
                     });
 
                     if (tables.length === 0) {
-                        tablesContainer.innerHTML = 
-                            '<div class="no-tables">No tables ready yet. Tables will appear when they have 4 players assigned.</div>';
+                        tableSelect.style.display = 'none';
+                        noTablesMessage.style.display = 'block';
+                        noTablesMessage.textContent = 'No tables ready yet. Tables will appear when they have 4 players assigned.';
                         return;
                     }
 
+                    // Sort tables by number
                     tables.sort((a, b) => a.tableNumber - b.tableNumber);
 
-                    const tablesHTML = tables.map(table => `
-                        <button class="table-button" onclick="selectTable('${table.id}', ${table.tableNumber})">
-                            <div class="table-number">${table.tableNumber}</div>
-                            <div class="table-label">Table</div>
-                        </button>
-                    `).join('');
+                    // Show selector, hide message
+                    tableSelect.style.display = 'block';
+                    noTablesMessage.style.display = 'none';
 
-                    tablesContainer.innerHTML = `
-                        <div class="table-grid">${tablesHTML}</div>
-                    `;
-
-                    // Make selectTable globally accessible
-                    window.selectTable = (tableId, tableNumber) => {
-                        localStorage.setItem('tournamentId', currentTournamentId);
-                        localStorage.setItem('tableId', tableId);
-                        localStorage.setItem('tableNumber', tableNumber);
-                        window.location.href = 'timer.html?mode=tournament';
-                    };
+                    // Populate dropdown
+                    tableSelect.innerHTML = '<option value="">Choose your table...</option>' +
+                        tables.map(table => `
+                            <option value="${table.id}" data-table-number="${table.tableNumber}">
+                                Table ${table.tableNumber}
+                            </option>
+                        `).join('');
                 }, (error) => {
                     console.error('Error loading tables:', error);
-                    tablesContainer.innerHTML = 
-                        `<div class="no-tables">Error: ${error.message}</div>`;
+                    tableSelect.style.display = 'none';
+                    noTablesMessage.style.display = 'block';
+                    noTablesMessage.textContent = `Error: ${error.message}`;
                 });
             } catch (error) {
                 console.error('Error setting up tables listener:', error);
-                tablesContainer.innerHTML = 
-                    `<div class="no-tables">Error: ${error.message}</div>`;
+                const noTablesMessage = document.getElementById('noTablesMessage');
+                noTablesMessage.style.display = 'block';
+                noTablesMessage.textContent = `Error: ${error.message}`;
             }
         }
+        
+        // Handle table selection
+        document.getElementById('tableSelect').addEventListener('change', (e) => {
+            const selectedOption = e.target.selectedOptions[0];
+            if (selectedOption && selectedOption.value) {
+                const tableId = selectedOption.value;
+                const tableNumber = selectedOption.dataset.tableNumber;
+                
+                localStorage.setItem('tournamentId', currentTournamentId);
+                localStorage.setItem('tableId', tableId);
+                localStorage.setItem('tableNumber', tableNumber);
+                window.location.href = 'timer.html?mode=tournament';
+            }
+        });
 
-        // Focus on room code input on load
-        roomCodeInput.focus();
+        // Focus on tournament code input on load
+        tournamentCodeInput.focus();
     </script>
 </body>
 </html>

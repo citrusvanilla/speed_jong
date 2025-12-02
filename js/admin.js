@@ -317,15 +317,15 @@ function displayTournamentInfo(data) {
             <div class="info-value">${data.name}</div>
         </div>
         <div class="info-item">
-            <div class="info-label">Room Code</div>
+            <div class="info-label">Tournament Code</div>
             <div class="info-value">
                 <input type="text" 
-                       id="roomCodeInput" 
-                       value="${data.roomCode || ''}" 
+                       id="tournamentCodeInput" 
+                       value="${data.tournamentCode || ''}" 
                        maxlength="4"
                        style="width: 100px; padding: 8px 12px; border-radius: 6px; border: 2px solid #e5e7eb; font-size: 16px; font-weight: bold; letter-spacing: 3px; text-align: center; text-transform: uppercase; color: #667eea;"
                        oninput="this.value = this.value.toUpperCase()"
-                       onblur="updateRoomCode(this.value, '${data.roomCode || ''}')"
+                       onblur="updateTournamentCode(this.value, '${data.tournamentCode || ''}')"
                        placeholder="XXXX">
             </div>
         </div>
@@ -430,7 +430,7 @@ function displayTournamentInfo(data) {
 // Create Tournament
 createTournamentBtn.addEventListener('click', () => {
     document.getElementById('tournamentName').value = '';
-    document.getElementById('tournamentRoomCode').value = '';
+    document.getElementById('tournamentTournamentCode').value = '';
     document.getElementById('tournamentTimer').value = '5';
     tournamentModal.classList.remove('hidden');
 });
@@ -505,8 +505,8 @@ document.getElementById('importFileInput').addEventListener('change', async (e) 
         delete tournamentData.id; // Remove old ID
         tournamentData.name = tournamentName; // Use new name if changed
         
-        // Generate new room code (always generate new for imports to avoid conflicts)
-        tournamentData.roomCode = await generateUniqueRoomCode();
+        // Generate new tournament code (always generate new for imports to avoid conflicts)
+        tournamentData.tournamentCode = await generateUniqueTournamentCode();
         
         // Convert timestamps
         if (tournamentData.createdAt) {
@@ -649,8 +649,8 @@ document.getElementById('cancelTournamentBtn').addEventListener('click', () => {
     tournamentModal.classList.add('hidden');
 });
 
-// Generate a unique 4-character room code
-function generateRoomCode() {
+// Generate a unique 4-character tournament code
+function generateTournamentCode() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; // All alphanumeric
     let code = '';
     for (let i = 0; i < 4; i++) {
@@ -659,45 +659,45 @@ function generateRoomCode() {
     return code;
 }
 
-// Check if room code already exists (case-insensitive)
-async function isRoomCodeUnique(roomCode, excludeTournamentId = null) {
+// Check if tournament code already exists (case-insensitive)
+async function isTournamentCodeUnique(tournamentCode, excludeTournamentId = null) {
     const tournamentsSnap = await getDocs(collection(db, 'tournaments'));
     const existingCodes = tournamentsSnap.docs
         .filter(doc => doc.id !== excludeTournamentId) // Exclude current tournament when editing
-        .map(doc => doc.data().roomCode?.toUpperCase())
+        .map(doc => doc.data().tournamentCode?.toUpperCase())
         .filter(Boolean);
-    return !existingCodes.includes(roomCode.toUpperCase());
+    return !existingCodes.includes(tournamentCode.toUpperCase());
 }
 
-// Generate unique room code
-async function generateUniqueRoomCode() {
-    let roomCode;
+// Generate unique tournament code
+async function generateUniqueTournamentCode() {
+    let tournamentCode;
     let attempts = 0;
     const maxAttempts = 20;
     
     do {
-        roomCode = generateRoomCode();
+        tournamentCode = generateTournamentCode();
         attempts++;
         if (attempts > maxAttempts) {
-            throw new Error('Failed to generate unique room code');
+            throw new Error('Failed to generate unique tournament code');
         }
-    } while (!(await isRoomCodeUnique(roomCode)));
-    
-    return roomCode;
+    } while (!(await isTournamentCodeUnique(tournamentCode)));
+
+    return tournamentCode;
 }
 
-// Validate and sanitize room code
-function validateRoomCode(code) {
+// Validate and sanitize tournament code
+function validateTournamentCode(code) {
     const sanitized = code.trim().toUpperCase();
     
     // Must be exactly 4 characters
     if (sanitized.length !== 4) {
-        return { valid: false, error: 'Room code must be exactly 4 characters' };
+        return { valid: false, error: 'Tournament code must be exactly 4 characters' };
     }
     
     // Must be alphanumeric only
     if (!/^[A-Z0-9]{4}$/.test(sanitized)) {
-        return { valid: false, error: 'Room code must contain only letters and numbers' };
+        return { valid: false, error: 'Tournament code must contain only letters and numbers' };
     }
     
     return { valid: true, code: sanitized };
@@ -707,7 +707,7 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
     e.preventDefault();
     
     const name = document.getElementById('tournamentName').value.trim();
-    const customRoomCode = document.getElementById('tournamentRoomCode').value.trim();
+    const customTournamentCode = document.getElementById('tournamentTournamentCode').value.trim();
     const type = document.getElementById('tournamentType').value;
     const timerDuration = parseInt(document.getElementById('tournamentTimer').value);
     const maxPlayers = parseInt(document.getElementById('tournamentMaxPlayers').value) || 0;
@@ -728,26 +728,26 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
             return;
         }
         
-        // Determine room code (custom or auto-generated)
-        let roomCode;
-        if (customRoomCode) {
-            // Validate custom room code
-            const validation = validateRoomCode(customRoomCode);
+        // Determine tournament code (custom or auto-generated)
+        let tournamentCode;
+        if (customTournamentCode) {
+            // Validate custom tournament code
+            const validation = validateTournamentCode(customTournamentCode);
             if (!validation.valid) {
                 showToast(validation.error, 'error');
                 return;
             }
             
             // Check if custom code is unique
-            if (!(await isRoomCodeUnique(validation.code))) {
-                showToast('This room code is already in use. Please choose a different code.', 'error');
+            if (!(await isTournamentCodeUnique(validation.code))) {
+                showToast('This tournament code is already in use. Please choose a different code.', 'error');
                 return;
             }
             
-            roomCode = validation.code;
+            tournamentCode = validation.code;
         } else {
-            // Auto-generate unique room code
-            roomCode = await generateUniqueRoomCode();
+            // Auto-generate unique tournament code
+            tournamentCode = await generateUniqueTournamentCode();
         }
         
         const tournamentRef = doc(collection(db, 'tournaments'));
@@ -757,7 +757,7 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
             timerDuration,
             maxPlayers,
             totalRounds,
-            roomCode,
+            tournamentCode,
             status: 'staging',
             currentRound: 0,
             roundInProgress: false,
@@ -765,8 +765,8 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
         });
         
         tournamentModal.classList.add('hidden');
-        document.getElementById('tournamentRoomCode').value = ''; // Clear for next time
-        showToast(`Tournament "${name}" created successfully! Room Code: ${roomCode}`, 'success');
+        document.getElementById('tournamentTournamentCode').value = ''; // Clear for next time
+        showToast(`Tournament "${name}" created successfully! Tournament Code: ${tournamentCode}`, 'success');
         await loadTournaments();
         tournamentSelect.value = tournamentRef.id;
         selectTournament(tournamentRef.id);
@@ -1131,8 +1131,40 @@ document.getElementById('bulkPlayerFile').addEventListener('change', async (e) =
     const file = e.target.files[0];
     if (!file) return;
     
-    const text = await file.text();
-    document.getElementById('bulkPlayerText').value = text;
+    try {
+        const text = await file.text();
+        // Handle CSV files - parse and clean up
+        let processedText = text;
+        
+        // If it's a CSV, try to extract names (handle comma-separated values)
+        if (file.name.endsWith('.csv')) {
+            const lines = text.split('\n');
+            const names = [];
+            
+            for (let line of lines) {
+                // Skip empty lines
+                if (!line.trim()) continue;
+                
+                // Take first column (split by comma, handle quotes)
+                const match = line.match(/^"?([^",]+)"?/);
+                if (match && match[1].trim()) {
+                    names.push(match[1].trim());
+                }
+            }
+            
+            processedText = names.join('\n');
+        }
+        
+        document.getElementById('bulkPlayerText').value = processedText;
+        
+        // Auto-trigger preview if file loaded successfully
+        if (processedText.trim()) {
+            showToast('File loaded successfully. Click Preview to review.', 'success');
+        }
+    } catch (error) {
+        console.error('Error reading file:', error);
+        showToast('Error reading file: ' + error.message, 'error');
+    }
 });
 
 document.getElementById('previewBulkPlayerBtn').addEventListener('click', () => {
@@ -1196,8 +1228,18 @@ document.getElementById('importBulkPlayerBtn').addEventListener('click', async (
         return;
     }
     
+    if (!currentTournamentId) {
+        showToast('No tournament selected.', 'error');
+        return;
+    }
+    
     // Check player limit
     const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
+    if (!tournamentDoc.exists()) {
+        showToast('Tournament not found.', 'error');
+        return;
+    }
+    
     const tournamentData = tournamentDoc.data();
     const maxPlayers = tournamentData.maxPlayers || 0;
     const currentPlayerCount = Object.keys(playersData).length;
@@ -1233,44 +1275,36 @@ document.getElementById('importBulkPlayerBtn').addEventListener('click', async (
         }
     }
     
-    // Confirm import
-    const confirmMessage = `<p>Import <strong>${bulkPlayerNames.length}</strong> player(s)?</p>` +
-        `<p style="margin-top: 10px; color: #6b7280; font-size: 13px;">Players will be added to the tournament.</p>`;
-    
-    showConfirmAction(
-        'Import Players',
-        confirmMessage,
-        async () => {
-            try {
-                // Use batch write for all players - single network call
-                const batch = writeBatch(db);
-                
-                for (const name of bulkPlayerNames) {
-                    const playerRef = doc(collection(db, 'tournaments', currentTournamentId, 'players'));
-                    batch.set(playerRef, {
-                        name,
-                        registeredAt: serverTimestamp(),
-                        tableId: null,
-                        position: null,
-                        wins: 0,
-                        points: 0,
-                        lastWinAt: null,
-                        eliminated: false,
-                        eliminatedInRound: null
-                    });
-                }
-                
-                // Commit all players in one batch
-                await batch.commit();
-                
-                bulkPlayerModal.classList.add('hidden');
-                showToast(`Successfully imported ${bulkPlayerNames.length} player(s)!`, 'success');
-            } catch (error) {
-                console.error('Error importing players:', error);
-                showToast('Error importing players: ' + error.message, 'error');
-            }
+    // No confirmation needed - user already previewed and clicked Import
+    // Directly import the players
+    try {
+        // Use batch write for all players - single network call
+        const batch = writeBatch(db);
+        
+        for (const name of bulkPlayerNames) {
+            const playerRef = doc(collection(db, 'tournaments', currentTournamentId, 'players'));
+            batch.set(playerRef, {
+                name,
+                registeredAt: serverTimestamp(),
+                tableId: null,
+                position: null,
+                wins: 0,
+                points: 0,
+                lastWinAt: null,
+                eliminated: false,
+                eliminatedInRound: null
+            });
         }
-    );
+        
+        // Commit all players in one batch
+        await batch.commit();
+        
+        bulkPlayerModal.classList.add('hidden');
+        showToast(`Successfully imported ${bulkPlayerNames.length} player(s)!`, 'success');
+    } catch (error) {
+        console.error('Error importing players:', error);
+        showToast('Error importing players: ' + error.message, 'error');
+    }
 });
 
 document.getElementById('cancelPlayerBtn').addEventListener('click', () => {
@@ -1404,26 +1438,33 @@ document.getElementById('closePlayerActionsBtn').addEventListener('click', () =>
 
 // Show confirmation modal
 function showConfirmAction(title, message, onConfirm, onCancel) {
+    const modal = document.getElementById('confirmActionModal');
+    
+    if (!modal) {
+        console.error('confirmActionModal not found!');
+        return;
+    }
+    
     document.getElementById('confirmActionTitle').textContent = title;
     document.getElementById('confirmActionMessage').innerHTML = message;
     
     // Set up confirm button
     const confirmBtn = document.getElementById('confirmConfirmActionBtn');
     confirmBtn.onclick = () => {
-        document.getElementById('confirmActionModal').classList.add('hidden');
+        modal.classList.add('hidden');
         onConfirm();
     };
     
     // Set up cancel button (with optional callback)
     const cancelBtn = document.getElementById('cancelConfirmActionBtn');
     cancelBtn.onclick = () => {
-        document.getElementById('confirmActionModal').classList.add('hidden');
+        modal.classList.add('hidden');
         if (onCancel) {
             onCancel();
         }
     };
     
-    document.getElementById('confirmActionModal').classList.remove('hidden');
+    modal.classList.remove('hidden');
 }
 
 // Show type-to-confirm modal (for dangerous actions requiring exact text input)
@@ -1951,10 +1992,9 @@ document.getElementById('autoAssignBtn').addEventListener('click', () => {
         html += activeTables.map(table => {
             const playerCount = table.players ? table.players.length : 0;
             return `
-                <label style="display: block; padding: 8px; margin: 5px 0; background: white; border: 1px solid #10b981; border-radius: 4px; cursor: pointer;">
-                    <input type="checkbox" class="table-checkbox" data-table-id="${table.id}" style="margin-right: 10px;">
-                    <span style="color: #10b981; font-weight: bold;">✅</span>
-                    Table ${table.tableNumber} (${playerCount}/4 players)
+                <label style="display: flex !important; align-items: center; justify-content: flex-start; gap: 10px; padding: 8px 12px; margin: 3px 0; background: white; border: 1px solid #10b981; border-radius: 4px; cursor: pointer;">
+                    <input type="checkbox" class="table-checkbox" data-table-id="${table.id}" style="width: auto !important; margin: 0;">
+                    <span style="flex: 1; text-align: left;">Table ${table.tableNumber} (${playerCount}/4 players)</span>
                 </label>
             `;
         }).join('');
@@ -1965,10 +2005,9 @@ document.getElementById('autoAssignBtn').addEventListener('click', () => {
         html += inactiveTables.map(table => {
             const playerCount = table.players ? table.players.length : 0;
             return `
-                <label style="display: block; padding: 8px; margin: 5px 0; background: #f9fafb; border: 1px dashed #94a3b8; border-radius: 4px; cursor: pointer; opacity: 0.6;">
-                    <input type="checkbox" class="table-checkbox" data-table-id="${table.id}" style="margin-right: 10px;">
-                    <span style="color: #94a3b8;">🚫</span>
-                    Table ${table.tableNumber} (${playerCount}/4 players) - Inactive
+                <label style="display: flex !important; align-items: center; justify-content: flex-start; gap: 10px; padding: 8px 12px; margin: 3px 0; background: #f9fafb; border: 1px dashed #94a3b8; border-radius: 4px; cursor: pointer; opacity: 0.6;">
+                    <input type="checkbox" class="table-checkbox" data-table-id="${table.id}" style="width: auto !important; margin: 0;">
+                    <span style="color: #94a3b8; flex: 1; text-align: left;">Table ${table.tableNumber} (${playerCount}/4 players) - Inactive</span>
                 </label>
             `;
         }).join('');
@@ -3883,8 +3922,8 @@ window.updateTotalRounds = async function(newValue, oldValue) {
     }
 };
 
-// Update room code
-window.updateRoomCode = async function(newValue, oldValue) {
+// Update tournament code
+window.updateTournamentCode = async function(newValue, oldValue) {
     const newCode = newValue.trim().toUpperCase();
     const oldCode = oldValue.trim().toUpperCase();
     
@@ -3892,31 +3931,31 @@ window.updateRoomCode = async function(newValue, oldValue) {
     if (newCode === oldCode) return;
     
     // Validate
-    const validation = validateRoomCode(newCode);
+    const validation = validateTournamentCode(newCode);
     if (!validation.valid) {
         showToast(validation.error, 'error');
         // Reset to old value
-        document.getElementById('roomCodeInput').value = oldValue;
+        document.getElementById('tournamentCodeInput').value = oldValue;
         return;
     }
     
     try {
         // Check uniqueness (exclude current tournament)
-        if (!(await isRoomCodeUnique(validation.code, currentTournamentId))) {
-            showToast('This room code is already in use by another tournament.', 'error');
-            document.getElementById('roomCodeInput').value = oldValue;
+        if (!(await isTournamentCodeUnique(validation.code, currentTournamentId))) {
+            showToast('This tournament code is already in use by another tournament.', 'error');
+            document.getElementById('tournamentCodeInput').value = oldValue;
             return;
         }
         
         await updateDoc(doc(db, 'tournaments', currentTournamentId), {
-            roomCode: validation.code
+            tournamentCode: validation.code
         });
-        showToast(`✅ Room code updated to: ${validation.code}`, 'success');
+        showToast(`✅ Tournament code updated to: ${validation.code}`, 'success');
         selectTournament(currentTournamentId); // Refresh
     } catch (error) {
-        console.error('Error updating room code:', error);
-        showToast('Error updating room code: ' + error.message, 'error');
-        document.getElementById('roomCodeInput').value = oldValue;
+        console.error('Error updating tournament code:', error);
+        showToast('Error updating tournament code: ' + error.message, 'error');
+        document.getElementById('tournamentCodeInput').value = oldValue;
     }
 };
 

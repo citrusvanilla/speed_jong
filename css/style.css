@@ -160,6 +160,14 @@ h1 {
     transform: translateY(0);
 }
 
+.back-btn {
+    background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+}
+
+.back-btn:hover {
+    box-shadow: 0 10px 20px rgba(107, 114, 128, 0.3);
+}
+
 /* Round Info Badge on Timer Config */
 .round-info-badge {
     text-align: center;

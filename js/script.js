@@ -44,8 +44,10 @@ let lastTapTime = 0;
 let lastTickSecond = 5;
 const TAP_DEBOUNCE_MS = 250;
 let isRoundInProgress = false; // Track if tournament round is active
+let hasReceivedInitialRoundStatus = false; // Track if we've gotten initial Firebase data
 let graceTimer = null; // Timer for auto-closing scoring modal
 let isInGracePeriod = false; // Track if we're in the grace period after round ends
+let waitingAnimationInterval = null; // Interval for animating waiting ellipses
 const GRACE_PERIOD_MS = 30000; // 30 seconds
 
 // Load saved settings from localStorage
@@ -200,6 +202,7 @@ function setupTournamentUI() {
                 // Update global round status
                 const wasRoundInProgress = isRoundInProgress;
                 isRoundInProgress = roundInProgress;
+                hasReceivedInitialRoundStatus = true; // Mark that we've received Firebase data
                 
                 // Detect round end - open scoring modal automatically if on game screen
                 if (wasRoundInProgress && !roundInProgress && gameScreen && gameScreen.classList.contains('hidden') === false) {
@@ -404,17 +407,17 @@ async function loadTablePlayers() {
         
         // Create list of players with their positions
         const playersHTML = [];
+        const shorthand = { 'East': 'E', 'South': 'S', 'West': 'W', 'North': 'N' };
         for (const position of ['East', 'South', 'West', 'North']) {
             const playerId = positions[position];
             if (playerId) {
                 const playerDoc = await getDoc(doc(db, 'tournaments', tournamentId, 'players', playerId));
                 if (playerDoc.exists()) {
                     const playerData = playerDoc.data();
-                    const windSymbol = windSymbols[position] || '';
                     playersHTML.push(`
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: rgba(255,255,255,0.5); border-radius: 6px;">
-                            <span style="font-size: 0.7rem; color: #333;">${playerData.name}</span>
-                            <span style="font-size: 0.9rem; font-weight: bold; color: #667eea;">${windSymbol} ${position}</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,0.5); border-radius: 6px;">
+                            <span style="font-size: 0.65rem; color: #333; font-family: 'Press Start 2P', cursive; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;">${playerData.name}</span>
+                            <span style="font-size: 0.65rem; font-weight: bold; color: #667eea; font-family: 'Press Start 2P', cursive; white-space: nowrap; flex-shrink: 0;">${shorthand[position]}</span>
                         </div>
                     `);
                 }
@@ -757,6 +760,7 @@ async function releaseWakeLock() {
 
 // Timer functions
 function startTimer() {
+    stopWaitingAnimation(); // Stop waiting animation when timer starts
     currentTime = timerDuration;
     lastTickSecond = Math.floor(timerDuration);
     isTimeout = false;
@@ -845,6 +849,28 @@ function handleTimeout() {
     playTimeout();
 }
 
+// Animate waiting ellipses
+function startWaitingAnimation() {
+    if (waitingAnimationInterval) return; // Already running
+    
+    let dots = 0;
+    waitingAnimationInterval = setInterval(() => {
+        dots = (dots % 3) + 1; // Cycle through 1, 2, 3
+        // Always use 3 character positions, fill with dots and spaces
+        const ellipses = '.'.repeat(dots) + '\u00A0'.repeat(3 - dots); // \u00A0 is non-breaking space
+        if (settingsHint) {
+            settingsHint.innerHTML = `WAITING FOR ROUND TO START${ellipses}<br><br>Long press to go back`;
+        }
+    }, 500); // Update every 500ms
+}
+
+function stopWaitingAnimation() {
+    if (waitingAnimationInterval) {
+        clearInterval(waitingAnimationInterval);
+        waitingAnimationInterval = null;
+    }
+}
+
 function updateDisplay() {
     const displayTime = currentTime.toFixed(1);
     
@@ -857,18 +883,21 @@ function updateDisplay() {
         
         if (isTournamentMode) {
             if (isRoundInProgress) {
+                stopWaitingAnimation();
                 settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>Long press to record wins';
                 gameScreen.style.backgroundColor = '#4ade80'; // Green when ready
             } else {
-                settingsHint.innerHTML = 'WAITING FOR ROUND TO START<br><br>Ask the organizer to start a round';
+                startWaitingAnimation();
                 gameScreen.style.backgroundColor = '#fbbf24'; // Yellow/amber when waiting
             }
         } else {
+            stopWaitingAnimation();
             settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>Long press to return home<br><br>iPhone users can rotate<br>the phone in landscape mode<br>and remove all other tabs for<br>maximum tap real estate.<br><br>Sound not working?<br>Turn off Silent Mode<br>and reload page.';
         }
         settingsHint.classList.add('visible');
     } else if (currentTime <= 0) {
         // Timer finished - show magikarp and reset/settings hint
+        stopWaitingAnimation();
         timerText.style.opacity = '0';
         tapHint.classList.remove('visible');
         timeoutGif.classList.add('visible');
@@ -885,6 +914,7 @@ function updateDisplay() {
         settingsHint.classList.add('visible');
     } else {
         // Timer running - show time and tap hint
+        stopWaitingAnimation();
         timerText.style.opacity = '1';
         timerText.textContent = displayTime;
         tapHint.classList.add('visible');
@@ -937,15 +967,28 @@ startButton.addEventListener('click', async () => {
     // Request wake lock
     await requestWakeLock();
     
+    // In tournament mode, wait for Firebase to confirm round status before showing game screen
+    if (isTournamentMode && !hasReceivedInitialRoundStatus) {
+        // Wait up to 500ms for initial Firebase data
+        const startWait = Date.now();
+        while (!hasReceivedInitialRoundStatus && (Date.now() - startWait) < 500) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+    }
+    
     // Switch to game screen in ready state (showing 0.0)
     startScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
     isReady = true;
     currentTime = 0;
     
-    // Set initial color based on mode and round status
-    if (isTournamentMode && !isRoundInProgress) {
-        gameScreen.style.backgroundColor = '#fbbf24'; // Yellow/amber when waiting
+    // Set color based on mode and round status
+    if (isTournamentMode) {
+        if (isRoundInProgress) {
+            gameScreen.style.backgroundColor = '#4ade80'; // Green - round active
+        } else {
+            gameScreen.style.backgroundColor = '#fbbf24'; // Yellow - waiting
+        }
     } else {
         gameScreen.style.backgroundColor = '#4ade80'; // Green when ready
     }
@@ -975,8 +1018,16 @@ function cancelLongPress() {
 
 function handleLongPress() {
     if (isTournamentMode) {
-        // Only allow score recording during active round or grace period
-        if (isRoundInProgress || isInGracePeriod) {
+        // If in ready state waiting for round, go back to config
+        if (isReady && !isRoundInProgress) {
+            // Return to timer config screen
+            gameScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+            isReady = false;
+            stopWaitingAnimation();
+        }
+        // Allow score recording during active round or grace period
+        else if (isRoundInProgress || isInGracePeriod) {
             openScoringModal(false);
         }
     } else {
@@ -1057,12 +1108,17 @@ async function openScoringModal(autoOpened = false) {
             if (tournamentDoc.exists()) {
                 const data = tournamentDoc.data();
                 const currentRound = data.currentRound || 0;
-                const roundInProgress = data.roundInProgress || false;
                 const modalRoundInfo = document.getElementById('modalRoundInfo');
                 
                 if (modalRoundInfo && currentRound > 0) {
-                    const statusText = await getRoundStatusText(currentRound, roundInProgress);
-                    modalRoundInfo.textContent = statusText;
+                    // If in grace period, round has just ended - show COMPLETED
+                    if (isInGracePeriod) {
+                        modalRoundInfo.textContent = `Round ${currentRound} - COMPLETED`;
+                    } else {
+                        const roundInProgress = data.roundInProgress || false;
+                        const statusText = await getRoundStatusText(currentRound, roundInProgress);
+                        modalRoundInfo.textContent = statusText;
+                    }
                 }
             }
         }
@@ -1222,6 +1278,7 @@ loadSettings();
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
+    stopWaitingAnimation();
     releaseWakeLock();
 });
 

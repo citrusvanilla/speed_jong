@@ -285,6 +285,12 @@ header h1 {
     backdrop-filter: blur(4px);
 }
 
+/* Confirmation modals should appear above other modals */
+#confirmActionModal,
+#typeToConfirmModal {
+    z-index: 10000;
+}
+
 .modal-content {
     background: white;
     padding: 30px;

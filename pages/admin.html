@@ -162,16 +162,16 @@
                     <input type="text" id="tournamentName" required>
                 </div>
                 <div class="form-group">
-                    <label>Room Code (4 characters):</label>
+                    <label>Tournament Code (4 characters):</label>
                     <div style="display: flex; gap: 10px; align-items: center;">
-                        <input type="text" id="tournamentRoomCode" 
+                        <input type="text" id="tournamentTournamentCode" 
                                maxlength="4" 
                                placeholder="AUTO" 
                                style="flex: 1; text-transform: uppercase;"
                                oninput="this.value = this.value.toUpperCase()">
                         <button type="button" id="generateCodeBtn" class="btn btn-secondary" 
                                 style="padding: 8px 16px; font-size: 14px;"
-                                onclick="generateRandomRoomCode()">
+                                onclick="generateRandomTournamentCode()">
                             Generate
                         </button>
                     </div>
@@ -223,7 +223,7 @@
                     cutlineGroup.style.display = type === 'cutline' ? 'block' : 'none';
                 }
                 
-                function generateRandomRoomCode() {
+                function generateRandomTournamentCode() {
                     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
                     let code = '';
                     for (let i = 0; i < 4; i++) {
@@ -282,8 +282,8 @@
                 <div class="form-group">
                 <label>Select tables to assign players to:</label>
                 <div style="margin: 10px 0;">
-                    <button type="button" id="useFirstTablesBtn" class="btn btn-secondary" style="font-size: 13px; padding: 8px 16px;">
-                        📋 Use First Available Tables (1, 2, 3...)
+                    <button type="button" id="useFirstTablesBtn" class="btn btn-primary" style="font-size: 13px; padding: 8px 16px;">
+                        Use First Available Tables (1, 2, 3...)
                     </button>
                 </div>
                 <div id="tableSelectionList" style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; background: #f9fafb;">
