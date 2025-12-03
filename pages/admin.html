@@ -95,7 +95,28 @@
                     <button id="addPlayerBtn" class="btn btn-primary">+ Add Player</button>
                     </div>
                 </div>
-                <div id="playersList" class="players-grid"></div>
+                
+                <!-- Player Stats Table (Always Visible) -->
+                <div id="playerStatsTableContainer" style="margin-bottom: 20px; display: none;">
+                    <table id="playerStatsTable" class="display" style="width: 100%; font-size: 13px;">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Name</th>
+                                <th>Score</th>
+                                <th>Round Score</th>
+                                <th>Last Win</th>
+                                <th>Table Score</th>
+                                <th>Table</th>
+                                <th>Position</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="playerStatsTableBody">
+                        </tbody>
+                    </table>
+                </div>
             </section>
 
             <!-- Tables & Map Section (Combined) -->
@@ -279,7 +300,21 @@
         <div class="modal-content">
             <h2>Auto-Assign Players to Tables</h2>
             <p id="autoAssignInfo" style="margin: 15px 0; color: #374151;"></p>
-                <div class="form-group">
+            
+            <!-- Assignment Algorithm Selector -->
+            <div class="form-group">
+                <label for="assignmentAlgorithm">Assignment Algorithm:</label>
+                <select id="assignmentAlgorithm" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;">
+                    <option value="random">🎲 Random - Randomly shuffle players</option>
+                    <option value="ranking" id="rankingOption">🏆 By Ranking - Top 4 in table 1, next 4 in table 2, etc.</option>
+                    <option value="round_robin" id="roundRobinOption">🔄 Round Robin - Distribute ranks evenly across tables</option>
+                </select>
+                <p id="algorithmDescription" style="font-size: 12px; color: #6b7280; margin-top: 8px; line-height: 1.4;">
+                    Randomly shuffles all unassigned players before assigning to tables.
+                </p>
+            </div>
+            
+            <div class="form-group">
                 <label>Select tables to assign players to:</label>
                 <div style="margin: 10px 0;">
                     <button type="button" id="useFirstTablesBtn" class="btn btn-primary" style="font-size: 13px; padding: 8px 16px;">

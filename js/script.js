@@ -499,7 +499,7 @@ function updateScoringPanel() {
         <div class="player-score-card">
             <div class="player-score-name">${player.name}</div>
             <div class="player-score-position">${windSymbols[player.position]} ${player.position}</div>
-            <div class="score-display">${player.wins || 0} wins</div>
+            <div class="score-display">${player.wins > 0 ? '+' : ''}${player.wins || 0} pts</div>
             <div class="score-controls">
                 <button class="score-btn win" onclick="event.stopPropagation(); adjustScore('${player.id}', 1)">+</button>
                 <button class="score-btn lose" onclick="event.stopPropagation(); adjustScore('${player.id}', -1)">−</button>
@@ -520,6 +520,13 @@ window.adjustScore = async function(playerId, delta) {
     try {
         const { serverTimestamp, arrayUnion, Timestamp, getDocs, collection, query, where } = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js");
         
+        // Get current round number first (needed for scoreEvent)
+        const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
+        if (!tournamentDoc.exists()) return;
+        
+        const tournamentData = tournamentDoc.data();
+        const currentRound = tournamentData.currentRound || 0;
+        
         const playerRef = doc(db, 'tournaments', tournamentId, 'players', playerId);
         
         const now = Timestamp.now(); // Client timestamp
@@ -528,6 +535,7 @@ window.adjustScore = async function(playerId, delta) {
         const scoreEvent = {
             timestamp: now,
             delta: delta,
+            roundNumber: currentRound, // CRITICAL: needed for round score calculations
             addedAt: now // Player-side adjustments are immediate
         };
         
@@ -544,10 +552,7 @@ window.adjustScore = async function(playerId, delta) {
         await updateDoc(playerRef, updates);
         
         // Also update round participants if round is in progress
-        const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
         if (tournamentDoc.exists()) {
-            const tournamentData = tournamentDoc.data();
-            const currentRound = tournamentData.currentRound || 0;
             const roundInProgress = tournamentData.roundInProgress || false;
             
             if (currentRound > 0 && roundInProgress) {
@@ -575,6 +580,7 @@ window.adjustScore = async function(playerId, delta) {
                             const scoreEvent = {
                                 timestamp: now,
                                 delta: delta,
+                                roundNumber: currentRound, // CRITICAL: needed for round score calculations
                                 addedAt: now
                             };
                             
@@ -913,7 +919,7 @@ function updateDisplay() {
         if (isTournamentMode) {
             if (isRoundInProgress) {
                 stopWaitingAnimation();
-                settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>Long press to record wins';
+                settingsHint.innerHTML = 'North taps anywhere to start<br>when East is ready!<br><br>Long press to record score';
                 gameScreen.style.backgroundColor = '#4ade80'; // Green when ready
             } else {
                 startWaitingAnimation();
@@ -933,7 +939,7 @@ function updateDisplay() {
         
         if (isTournamentMode) {
             if (isRoundInProgress || isInGracePeriod) {
-                settingsHint.innerHTML = 'Tap anywhere to reset timer.<br>Long press to record wins.';
+                settingsHint.innerHTML = 'Tap anywhere to reset timer.<br>Long press to record score.';
             } else {
                 settingsHint.innerHTML = 'Tap anywhere to reset timer.<br><br>Round not active - scoring disabled.';
             }

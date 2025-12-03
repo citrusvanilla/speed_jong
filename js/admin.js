@@ -19,7 +19,14 @@ import {
     increment,
     arrayUnion
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-import { calculateCutLineTarget, sortPlayersForCutLine, sortPlayersForLeaderboard } from './cutline-utils.js';
+import { 
+    calculateCutLineTarget, 
+    sortPlayersForCutLine, 
+    sortPlayersForLeaderboard,
+    calculateTournamentScore,
+    calculateRoundScore,
+    calculateTableRoundScore
+} from './cutline-utils.js';
 
 // Firebase config
 const firebaseConfig = {
@@ -36,7 +43,179 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// ============================================================================
+// ASSIGNMENT ALGORITHM UTILITIES
+// ============================================================================
+
+/**
+ * Sort players by tournament ranking (for ranking-based algorithms)
+ * Sorting criteria (best to worst):
+ * 1. Most wins (descending)
+ * 2. Most points (descending)
+ * 3. Most recent win timestamp (descending)
+ * 4. Name (alphabetically as tie-breaker)
+ */
+function sortPlayersByRanking(players) {
+    return [...players].sort((a, b) => {
+        // 1. Wins (descending)
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        
+        // 2. Points (descending)
+        if (b.points !== a.points) return b.points - a.points;
+        
+        // 3. Last win timestamp (descending - more recent wins first)
+        const aTime = a.lastWinAt ? (a.lastWinAt.seconds || 0) : 0;
+        const bTime = b.lastWinAt ? (b.lastWinAt.seconds || 0) : 0;
+        if (bTime !== aTime) return bTime - aTime;
+        
+        // 4. Name (alphabetically)
+        return a.name.localeCompare(b.name);
+    });
+}
+
+/**
+ * Assign players to table groups based on selected algorithm
+ * @param {Array} players - Array of player objects
+ * @param {string} algorithm - 'random', 'ranking', or 'round_robin'
+ * @returns {Array} Array of arrays, where each inner array is 4 players for one table
+ */
+function assignPlayersByAlgorithm(players, algorithm) {
+    const numTables = Math.floor(players.length / 4);
+    const playersToAssign = players.slice(0, numTables * 4); // Only take players we can seat
+    
+    if (algorithm === 'random') {
+        // Algorithm 1: Random shuffle
+        const shuffled = [...playersToAssign].sort(() => Math.random() - 0.5);
+        const tables = [];
+        for (let i = 0; i < numTables; i++) {
+            tables.push(shuffled.slice(i * 4, (i + 1) * 4));
+        }
+        return tables;
+    }
+    
+    if (algorithm === 'ranking') {
+        // Algorithm 2: By ranking - top 4 in table 1, next 4 in table 2, etc.
+        const sorted = sortPlayersByRanking(playersToAssign);
+        const tables = [];
+        for (let i = 0; i < numTables; i++) {
+            tables.push(sorted.slice(i * 4, (i + 1) * 4));
+        }
+        return tables;
+    }
+    
+    if (algorithm === 'round_robin') {
+        // Algorithm 3: Round robin - distribute ranks evenly
+        // Rank 1,5,9,13 at table 1, rank 2,6,10,14 at table 2, etc.
+        const sorted = sortPlayersByRanking(playersToAssign);
+        const tables = Array.from({ length: numTables }, () => []);
+        sorted.forEach((player, i) => {
+            const tableIdx = i % numTables;
+            tables[tableIdx].push(player);
+        });
+        return tables;
+    }
+    
+    // Default to random
+    const shuffled = [...playersToAssign].sort(() => Math.random() - 0.5);
+    const tables = [];
+    for (let i = 0; i < numTables; i++) {
+        tables.push(shuffled.slice(i * 4, (i + 1) * 4));
+    }
+    return tables;
+}
+
+// ============================================================================
+// HELPER FUNCTIONS FOR SCORING SYSTEM
+// ============================================================================
+
+/**
+ * Build rounds map with score multipliers
+ * @param {string} tournamentId
+ * @returns {Object} Map of roundNumber to round data, plus lastCompletedRound
+ */
+async function buildRoundsMap(tournamentId) {
+    const roundsMap = {};
+    let lastCompletedRound = 0;
+    
+    try {
+        const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
+        roundsSnap.forEach(doc => {
+            const roundData = doc.data();
+            roundsMap[roundData.roundNumber] = {
+                scoreMultiplier: roundData.scoreMultiplier || 1,
+                timerDuration: roundData.timerDuration,
+                status: roundData.status
+            };
+            
+            // Track the highest completed round number
+            if (roundData.status === 'completed' && roundData.roundNumber > lastCompletedRound) {
+                lastCompletedRound = roundData.roundNumber;
+            }
+        });
+    } catch (error) {
+        console.error('Error building rounds map:', error);
+    }
+    
+    roundsMap._lastCompletedRound = lastCompletedRound;
+    return roundsMap;
+}
+
+/**
+ * Build table players map from round participants (for historical table groupings)
+ * @param {string} tournamentId
+ * @param {number} roundNumber - Which round to get table groupings from
+ * @returns {Object} Map of tableId to array of player objects (from that round)
+ */
+async function buildTablePlayersMapFromRound(tournamentId, roundNumber) {
+    const tablePlayersMap = {};
+    
+    if (roundNumber <= 0) return tablePlayersMap;
+    
+    try {
+        // Find the round document for this round number
+        const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
+        let targetRoundId = null;
+        
+        for (const roundDoc of roundsSnap.docs) {
+            const roundData = roundDoc.data();
+            if (roundData.roundNumber === roundNumber) {
+                targetRoundId = roundDoc.id;
+                break;
+            }
+        }
+        
+        if (!targetRoundId) return tablePlayersMap;
+        
+        // Get participants from that round (snapshot of player data at round start)
+        const participantsSnap = await getDocs(
+            collection(db, 'tournaments', tournamentId, 'rounds', targetRoundId, 'participants')
+        );
+        
+        // Build map of tableId to players who were at that table during this round
+        participantsSnap.forEach(doc => {
+            const participant = doc.data();
+            const tableId = participant.tableId || 'unassigned';
+            
+            if (!tablePlayersMap[tableId]) {
+                tablePlayersMap[tableId] = [];
+            }
+            
+            // Use the full player data (with scoreEvents) for calculations
+            const fullPlayer = playersData[participant.playerId];
+            if (fullPlayer) {
+                tablePlayersMap[tableId].push(fullPlayer);
+            }
+        });
+    } catch (error) {
+        console.error('Error building table players map from round:', error);
+    }
+    
+    return tablePlayersMap;
+}
+
+// ============================================================================
 // Toast Notification System
+// ============================================================================
 function showToast(message, type = 'info', duration = 5000) {
     const container = document.getElementById('toastContainer');
     const toast = document.createElement('div');
@@ -130,6 +309,7 @@ let playersData = {};
 let tablesData = {};
 let unsubscribePlayers = null;
 let unsubscribeTables = null;
+let unsubscribeRounds = null;
 
 // DOM Elements
 const tournamentSelect = document.getElementById('tournamentSelect');
@@ -267,6 +447,7 @@ async function selectTournament(tournamentId) {
     // Set up real-time listeners
     setupPlayersListener();
     setupTablesListener();
+    setupRoundsListener();
 }
 
 function deselectTournament() {
@@ -281,6 +462,7 @@ function deselectTournament() {
     // Unsubscribe from listeners
     if (unsubscribePlayers) unsubscribePlayers();
     if (unsubscribeTables) unsubscribeTables();
+    if (unsubscribeRounds) unsubscribeRounds();
 }
 
 function displayTournamentInfo(data) {
@@ -831,55 +1013,12 @@ function displayPlayers() {
     
     if (allPlayers.length === 0) {
         playersList.innerHTML = '<div class="empty-message">No players registered yet. Click "+ Add Player" to get started.</div>';
+        document.getElementById('playerStatsTableContainer').style.display = 'none';
         return;
     }
     
-    const renderPlayer = (player, isEliminated = false) => {
-        const assigned = player.tableId ? 'assigned' : '';
-        const assignmentText = player.tableId 
-            ? `Table ${tablesData[player.tableId]?.tableNumber || '?'} - ${player.position || '?'}`
-            : 'Not assigned';
-        const assignmentClass = player.tableId ? 'assigned' : '';
-        
-        const eliminatedStyle = isEliminated ? 'opacity: 0.5; background: #fee; border-color: #ef4444;' : '';
-        const eliminatedBadge = isEliminated ? `<span style="color: #ef4444; font-size: 11px; font-weight: bold;">ELIMINATED (R${player.eliminatedInRound})</span>` : '';
-        
-        return `
-            <div class="player-card ${assigned}" style="${eliminatedStyle}">
-                <div class="player-info">
-                    <div class="player-name">${player.name}</div>
-                    <div class="player-score" style="font-size: 13px; color: #6b7280; margin: 4px 0;">
-                        ${player.wins || 0} wins
-                    </div>
-                    <div class="player-assignment ${assignmentClass}">${assignmentText}</div>
-                    ${eliminatedBadge}
-                </div>
-                <div class="player-actions">
-                    <button class="btn btn-small btn-secondary" onclick="openPlayerActions('${player.id}', ${isEliminated})">Actions</button>
-                </div>
-            </div>
-        `;
-    };
-    
-    let html = '';
-    
-    // Sort players by name (case-insensitive)
-    const sortByName = (a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-    activePlayers.sort(sortByName);
-    eliminatedPlayers.sort(sortByName);
-    
-    // Active players first
-    if (activePlayers.length > 0) {
-        html += activePlayers.map(p => renderPlayer(p, false)).join('');
-    }
-    
-    // Eliminated players at the end
-    if (eliminatedPlayers.length > 0) {
-        html += '<div style="grid-column: 1/-1; margin-top: 20px; padding-top: 20px; border-top: 2px solid #e5e7eb;"><h3 style="color: #6b7280; font-size: 14px; margin-bottom: 15px;">Eliminated Players</h3></div>';
-        html += eliminatedPlayers.map(p => renderPlayer(p, true)).join('');
-    }
-    
-    playersList.innerHTML = html;
+    // Display player stats table (replaces player cards)
+    displayPlayerStatsTable(allPlayers); // Async but no need to await (fire and forget)
     
     // Show/hide "Eliminate Players" button based on tournament state
     const eliminateBtn = document.getElementById('eliminatePlayersBtn');
@@ -899,6 +1038,166 @@ function displayPlayers() {
             eliminateBtn.style.display = 'none';
         }
     }
+}
+
+async function displayPlayerStatsTable(allPlayers) {
+    // Build rounds map for score multipliers
+    const roundsMap = await buildRoundsMap(currentTournamentId);
+    
+    // Use last COMPLETED round for tie-breaking, not current round
+    // If tournament is in Round 2 staging, we want Round 1 scores for tie-breaking
+    const lastCompletedRound = roundsMap._lastCompletedRound || 0;
+    const currentRound = window.currentTournamentData?.currentRound || 0;
+    
+    // Build table players map FROM the last completed round (historical table groupings)
+    const tablePlayersMap = await buildTablePlayersMapFromRound(currentTournamentId, lastCompletedRound);
+    
+    // Sort players using leaderboard logic with LAST COMPLETED round for tie-breaking
+    const sortedPlayers = sortPlayersForLeaderboard(allPlayers, lastCompletedRound, roundsMap, tablePlayersMap);
+    
+    // Calculate golf-style ranks with proper tie detection
+    const playersWithRanks = [];
+    let currentRank = 1;
+    
+    for (let i = 0; i < sortedPlayers.length; i++) {
+        const player = sortedPlayers[i];
+        
+        // Check if this player is tied with previous player across ALL criteria
+        if (i > 0) {
+            const prevPlayer = sortedPlayers[i - 1];
+            
+            const playerTournamentScore = calculateTournamentScore(player, roundsMap);
+            const prevTournamentScore = calculateTournamentScore(prevPlayer, roundsMap);
+            const playerRoundScore = calculateRoundScore(player, lastCompletedRound, roundsMap);
+            const prevRoundScore = calculateRoundScore(prevPlayer, lastCompletedRound, roundsMap);
+            const playerLastWin = player.lastWinAt?.toMillis() || 0;
+            const prevLastWin = prevPlayer.lastWinAt?.toMillis() || 0;
+            
+            // Get table scores - find which table group each player belongs to
+            let playerTablePlayers = [player];
+            let prevTablePlayers = [prevPlayer];
+            
+            for (const [tableId, players] of Object.entries(tablePlayersMap)) {
+                if (players.some(p => p.id === player.id)) {
+                    playerTablePlayers = players;
+                }
+                if (players.some(p => p.id === prevPlayer.id)) {
+                    prevTablePlayers = players;
+                }
+            }
+            
+            const playerTableScore = calculateTableRoundScore(playerTablePlayers, lastCompletedRound, roundsMap);
+            const prevTableScore = calculateTableRoundScore(prevTablePlayers, lastCompletedRound, roundsMap);
+            
+            // Players are tied ONLY if ALL criteria match
+            const isTied = (
+                playerTournamentScore === prevTournamentScore &&
+                playerRoundScore === prevRoundScore &&
+                playerLastWin === prevLastWin &&
+                playerTableScore === prevTableScore
+            );
+            
+            if (isTied) {
+                playersWithRanks.push({ ...player, rank: playersWithRanks[i - 1].rank });
+            } else {
+                playersWithRanks.push({ ...player, rank: currentRank });
+            }
+        } else {
+            playersWithRanks.push({ ...player, rank: currentRank });
+        }
+        
+        currentRank = i + 2; // Next available rank (golf scoring: 1,2,3,4,4,4,4,8)
+    }
+    
+    // Prepare table data
+    const tableData = playersWithRanks.map((player) => {
+        const rank = player.rank;
+        const name = player.name || 'Unknown';
+        const tournamentScore = calculateTournamentScore(player, roundsMap);
+        // Show last completed round score (for tie-breaking display)
+        const roundScore = lastCompletedRound > 0 ? calculateRoundScore(player, lastCompletedRound, roundsMap) : 0;
+        const isEliminated = player.eliminated || false;
+        
+        // Last win time (only +1 events, not penalties)
+        let lastWinTime = '-';
+        const scoreEvents = player.scoreEvents || [];
+        const winEvents = scoreEvents.filter(e => e.delta > 0);
+        if (winEvents.length > 0) {
+            // Sort by timestamp descending to get most recent
+            const sortedWins = [...winEvents].sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+            const lastWin = sortedWins[0];
+            const date = lastWin.timestamp.toDate();
+            lastWinTime = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        }
+        
+        // Table round score (from last completed round)
+        let tableRoundScore = 0;
+        if (lastCompletedRound > 0) {
+            // Find which table group this player belongs to
+            let playerTablePlayers = [player];
+            for (const [tableId, players] of Object.entries(tablePlayersMap)) {
+                if (players.some(p => p.id === player.id)) {
+                    playerTablePlayers = players;
+                    break;
+                }
+            }
+            tableRoundScore = calculateTableRoundScore(playerTablePlayers, lastCompletedRound, roundsMap);
+        }
+        
+        // Table assignment
+        let tableInfo = '<span style="color: #9ca3af;">Unassigned</span>';
+        if (player.tableId && tablesData[player.tableId]) {
+            tableInfo = `Table ${tablesData[player.tableId].tableNumber}`;
+        }
+        
+        // Position
+        const position = player.position || '-';
+        
+        // Status
+        let status = '<span style="color: #10b981; font-weight: bold;">Active</span>';
+        if (isEliminated) {
+            status = `<span style="color: #ef4444; font-weight: bold;">Eliminated (R${player.eliminatedInRound || '?'})</span>`;
+        }
+        
+        // Actions button
+        const actionsBtn = `<button class="btn btn-small btn-secondary" onclick="openPlayerActions('${player.id}', ${isEliminated})">Actions</button>`;
+        
+        return [
+            rank,
+            name,
+            tournamentScore,
+            roundScore,
+            lastWinTime,
+            tableRoundScore,
+            tableInfo,
+            position,
+            status,
+            actionsBtn
+        ];
+    });
+    
+    // Destroy existing DataTable if it exists
+    if ($.fn.DataTable.isDataTable('#playerStatsTable')) {
+        $('#playerStatsTable').DataTable().destroy();
+    }
+    
+    // Initialize DataTable
+    $('#playerStatsTable').DataTable({
+        data: tableData,
+        order: [[0, 'asc']], // Default sort by Rank ascending
+        pageLength: 25,
+        lengthMenu: [[10, 25, 50, -1], [10, 25, 50, 'All']],
+        language: {
+            search: 'Search players:',
+            lengthMenu: 'Show _MENU_ players'
+        },
+        columnDefs: [
+            { className: 'dt-center', targets: [0, 2, 3, 4, 5, 6, 7, 8, 9] }, // Center all except name
+            { orderable: false, targets: [8, 9] } // Status and Actions columns not sortable
+        ]
+    });
+    
+    document.getElementById('playerStatsTableContainer').style.display = 'block';
 }
 
 document.getElementById('addPlayerBtn').addEventListener('click', async () => {
@@ -995,11 +1294,21 @@ document.getElementById('eliminatePlayersBtn').addEventListener('click', async (
         const activePlayers = Object.values(playersData).filter(p => !p.eliminated);
         const allPlayers = Object.values(playersData);
         
-        // Use shared cut line algorithm
+        // Use shared cut line algorithm with new scoring system
         const originalPlayerCount = allPlayers.length;
         
-        // Sort players for cutting (worst first)
-        const sortedPlayers = sortPlayersForCutLine(activePlayers, roundParticipants);
+        // Build rounds map and table players map for scoring
+        const roundsMap = await buildRoundsMap(currentTournamentId);
+        const tablePlayersMap = await buildTablePlayersMapFromRound(currentTournamentId, lastCompletedRound);
+        
+        // Sort players for cutting (worst first) using new scoring algorithm
+        const sortedPlayers = sortPlayersForCutLine(activePlayers, lastCompletedRound, roundsMap, tablePlayersMap);
+        
+        // Add tournament scores to sorted players for use in modal display
+        sortedPlayers.forEach(p => {
+            p.tournamentScore = calculateTournamentScore(p, roundsMap);
+            p.roundScore = calculateRoundScore(p, lastCompletedRound, roundsMap);
+        });
         
         // Calculate target based on LAST COMPLETED round
         const { targetRemaining, idealTarget, targetPercentage, chosenOption } = calculateCutLineTarget(
@@ -1033,31 +1342,36 @@ document.getElementById('eliminatePlayersBtn').addEventListener('click', async (
             <p><strong>Will Remain:</strong> ${remainingCount} players</p>
         `;
         
-        // Group players by score for better display
+        // Group players by tournament score and round score for better display
         const scoreMap = new Map();
         playersToCut.forEach(p => {
-            const score = p.wins || 0;
-            const participantData = roundParticipants[p.id];
-            const scoreEvents = participantData?.scoreEvents || [];
-            const roundWins = scoreEvents.reduce((sum, e) => sum + e.delta, 0);
-            const key = `${score}-${roundWins}`;
+            const tournamentScore = p.tournamentScore || 0;
+            const roundScore = p.roundScore || 0;
+            const key = `${tournamentScore}-${roundScore}`;
             
             if (!scoreMap.has(key)) {
-                scoreMap.set(key, { score, roundWins, names: [] });
+                scoreMap.set(key, { tournamentScore, roundScore, names: [] });
             }
             scoreMap.get(key).names.push(p.name);
         });
         
         const playersListHTML = Array.from(scoreMap.values())
-            .sort((a, b) => a.score - b.score)
-            .map(group => `
-                <div style="margin: 8px 0; padding: 8px; background: white; border-radius: 6px;">
-                    <strong>${group.score} total wins (${group.roundWins} this round):</strong>
-                    <div style="margin-top: 4px; color: #991b1b;">
-                        ${group.names.join(', ')}
+            .sort((a, b) => {
+                if (a.tournamentScore !== b.tournamentScore) return a.tournamentScore - b.tournamentScore;
+                return a.roundScore - b.roundScore;
+            })
+            .map(group => {
+                const tournamentScoreText = group.tournamentScore > 0 ? `+${group.tournamentScore}` : group.tournamentScore;
+                const roundScoreText = group.roundScore > 0 ? `+${group.roundScore}` : group.roundScore;
+                return `
+                    <div style="margin: 8px 0; padding: 8px; background: white; border-radius: 6px;">
+                        <strong>${tournamentScoreText} pts (${roundScoreText} this round):</strong>
+                        <div style="margin-top: 4px; color: #991b1b;">
+                            ${group.names.join(', ')}
+                        </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         
         document.getElementById('eliminateSummary').innerHTML = summaryHTML;
         document.getElementById('eliminatePlayersList').innerHTML = playersListHTML;
@@ -1805,6 +2119,7 @@ window.addScoreEventToPlayer = async function(roundId, participantId) {
         const scoreEvent = {
             timestamp: newTimestamp,
             delta: delta,
+            roundNumber: roundData.roundNumber, // CRITICAL: needed for round score calculations
             addedAt: Timestamp.now()
         };
         
@@ -1999,6 +2314,24 @@ function setupTablesListener() {
     });
 }
 
+// Rounds Management - Real-time listener for multiplier changes
+function setupRoundsListener() {
+    if (unsubscribeRounds) unsubscribeRounds();
+    
+    const roundsRef = collection(db, 'tournaments', currentTournamentId, 'rounds');
+    unsubscribeRounds = onSnapshot(roundsRef, async (snapshot) => {
+        // When rounds change (especially multipliers), refresh player stats table
+        // The displayPlayerStatsTable function will recalculate all scores with new multipliers
+        if (Object.keys(playersData).length > 0) {
+            const allPlayers = Object.values(playersData);
+            await displayPlayerStatsTable(allPlayers);
+        }
+        
+        // Also refresh the rounds history display to show updated multipliers
+        loadRoundsHistory();
+    });
+}
+
 function displayTables() {
     const tables = Object.values(tablesData).sort((a, b) => a.tableNumber - b.tableNumber);
     tableCount.textContent = tables.length;
@@ -2189,8 +2522,46 @@ document.getElementById('autoAssignBtn').addEventListener('click', () => {
     const tableList = document.getElementById('tableSelectionList');
     const validation = document.getElementById('assignmentValidation');
     const confirmBtn = document.getElementById('confirmAutoAssignBtn');
+    const algorithmSelect = document.getElementById('assignmentAlgorithm');
+    const algorithmDesc = document.getElementById('algorithmDescription');
+    const rankingOption = document.getElementById('rankingOption');
+    const roundRobinOption = document.getElementById('roundRobinOption');
     
     info.textContent = `Unassigned players: ${unassignedPlayers.length}`;
+    
+    // Check current round to enable/disable ranking algorithms
+    const currentRound = currentTournamentData?.currentRound || 0;
+    const isRound1OrBefore = currentRound <= 1;
+    
+    if (isRound1OrBefore) {
+        // Disable ranking algorithms for round 1
+        rankingOption.disabled = true;
+        roundRobinOption.disabled = true;
+        rankingOption.textContent = '🏆 By Ranking - Not available (Round 1 - no rankings yet)';
+        roundRobinOption.textContent = '🔄 Round Robin - Not available (Round 1 - no rankings yet)';
+        algorithmSelect.value = 'random'; // Force random
+    } else {
+        // Enable ranking algorithms after round 1
+        rankingOption.disabled = false;
+        roundRobinOption.disabled = false;
+        rankingOption.textContent = '🏆 By Ranking - Top 4 in table 1, next 4 in table 2, etc.';
+        roundRobinOption.textContent = '🔄 Round Robin - Distribute ranks evenly across tables';
+    }
+    
+    // Update algorithm description when selection changes
+    algorithmSelect.addEventListener('change', () => {
+        const algo = algorithmSelect.value;
+        if (algo === 'random') {
+            algorithmDesc.innerHTML = 'Randomly shuffles all unassigned players before assigning to tables.';
+        } else if (algo === 'ranking') {
+            algorithmDesc.innerHTML = '<strong>Groups players by rank.</strong> Best 4 players at table 1, next best 4 at table 2, etc. <em>Useful for seeding strong players together.</em>';
+        } else if (algo === 'round_robin') {
+            algorithmDesc.innerHTML = '<strong>Distributes ranks evenly.</strong> Places rank 1, 5, 9, 13 at table 1; rank 2, 6, 10, 14 at table 2, etc. <em>Balances skill levels across tables.</em>';
+        }
+    });
+    
+    // Trigger initial description
+    algorithmSelect.dispatchEvent(new Event('change'));
     
     // Get all tables, sorted by number
     const allTables = Object.values(tablesData).sort((a, b) => a.tableNumber - b.tableNumber);
@@ -2297,12 +2668,22 @@ document.getElementById('confirmAutoAssignBtn').addEventListener('click', async 
     const modal = document.getElementById('autoAssignModal');
     const checkboxes = document.querySelectorAll('.table-checkbox:checked');
     const selectedTableIds = Array.from(checkboxes).map(cb => cb.dataset.tableId);
+    const algorithmSelect = document.getElementById('assignmentAlgorithm');
+    const selectedAlgorithm = algorithmSelect.value;
     
     if (selectedTableIds.length === 0) return;
     
     const unassignedPlayers = Object.values(playersData).filter(p => !p.tableId && !p.eliminated);
-    const shuffled = [...unassignedPlayers].sort(() => Math.random() - 0.5);
-        const positions = ['East', 'South', 'West', 'North'];
+    
+    // Use selected algorithm to assign players to table groups
+    const tableAssignments = assignPlayersByAlgorithm(unassignedPlayers, selectedAlgorithm);
+    const positions = ['East', 'South', 'West', 'North'];
+    
+    const algorithmNames = {
+        random: 'Random',
+        ranking: 'By Ranking',
+        round_robin: 'Round Robin'
+    };
         
     try {
         modal.classList.add('hidden');
@@ -2310,9 +2691,9 @@ document.getElementById('confirmAutoAssignBtn').addEventListener('click', async 
         // Use batch write for efficiency - single network call
         const batch = writeBatch(db);
         
-        for (let i = 0; i < selectedTableIds.length; i++) {
+        for (let i = 0; i < selectedTableIds.length && i < tableAssignments.length; i++) {
             const tableId = selectedTableIds[i];
-            const tablePlayers = shuffled.slice(i * 4, (i + 1) * 4);
+            const tablePlayers = tableAssignments[i];
             
             const playerIds = tablePlayers.map(p => p.id);
             const positionsMap = {};
@@ -2340,7 +2721,8 @@ document.getElementById('confirmAutoAssignBtn').addEventListener('click', async 
         // Commit all updates in a single network call
         await batch.commit();
         
-        showToast(`Assigned ${selectedTableIds.length * 4} players to ${selectedTableIds.length} table(s)!`, 'success');
+        const algoName = algorithmNames[selectedAlgorithm] || selectedAlgorithm;
+        showToast(`Assigned ${selectedTableIds.length * 4} players to ${selectedTableIds.length} table(s) using ${algoName} algorithm!`, 'success');
     } catch (error) {
         console.error('Error auto-assigning:', error);
         showToast('Error auto-assigning: ' + error.message, 'error');
@@ -2784,8 +3166,9 @@ async function displayRoundInfo(data) {
         const isPlayoff = currentRoundData?.isPlayoff || false;
         const playoffBadge = isPlayoff ? '<span style="background: #fbbf24; color: #92400e; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; margin-left: 10px;">PLAYOFF</span>' : '';
         
-        // Show editable timer if round is in staging
+        // Show editable timer and multiplier if round is in staging
         const timerDuration = currentRoundData?.timerDuration || 0;
+        const scoreMultiplier = currentRoundData?.scoreMultiplier || 1;
         let timerInfoHTML = '';
         if (roundStatus === 'staging' && currentRoundData) {
             timerInfoHTML = `
@@ -2803,6 +3186,34 @@ async function displayRoundInfo(data) {
                         />
                         <span style="margin-left: 8px; color: #6b7280;">minutes</span>
                     </div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Score Multiplier</div>
+                    <div class="info-value">
+                        <input 
+                            type="number" 
+                            id="editScoreMultiplier" 
+                            value="${scoreMultiplier}" 
+                            min="1" 
+                            max="10"
+                            step="0.5"
+                            style="width: 80px; padding: 6px 10px; font-size: 16px; border: 2px solid #f59e0b; border-radius: 6px; text-align: center; font-weight: bold;"
+                            onchange="updateScoreMultiplier(this.value, ${scoreMultiplier})"
+                        />
+                        <span style="margin-left: 8px; color: #6b7280;">x</span>
+                    </div>
+                </div>
+            `;
+        } else if (currentRoundData) {
+            // Show static display for in-progress or completed rounds
+            timerInfoHTML = `
+                <div class="info-item">
+                    <div class="info-label">Round Timer</div>
+                    <div class="info-value">${timerDuration} minutes</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Score Multiplier</div>
+                    <div class="info-value" style="font-size: 24px; font-weight: bold; color: #f59e0b;">${scoreMultiplier}x</div>
                 </div>
             `;
         }
@@ -3028,6 +3439,7 @@ async function loadRoundsHistory() {
             const endDate = round.endedAt ? new Date(round.endedAt.toDate()).toLocaleString() : '-';
             
             const timerText = round.timerDuration ? `${round.timerDuration} min` : 'N/A';
+            const multiplier = round.scoreMultiplier || 1;
             const isPlayoff = round.isPlayoff || false;
             const playoffBadge = isPlayoff ? '<span style="margin-left: 10px; background: #fbbf24; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">PLAYOFF</span>' : '';
             
@@ -3043,6 +3455,7 @@ async function loadRoundsHistory() {
                             ${playoffBadge}
                             <span class="status-badge ${statusClass}" style="margin-left: 10px; font-size: 11px;">${statusText}</span>
                             <span style="margin-left: 10px; font-size: 12px; color: #667eea;">⏱️ ${timerText}</span>
+                            <span style="margin-left: 10px; font-size: 12px; color: #059669; font-weight: bold; cursor: pointer;" onclick="editRoundMultiplier('${round.id}', ${round.roundNumber}, ${multiplier})" title="Click to edit multiplier">✕${multiplier}</span>
                         </div>
                         <div style="font-size: 12px; color: #6b7280;">
                             Started: ${startDate}
@@ -3113,6 +3526,51 @@ window.restartSpecificRound = async function(roundNumber, roundId) {
     );
 };
 
+// Edit round multiplier
+window.editRoundMultiplier = async function(roundId, roundNumber, currentMultiplier) {
+    if (!currentTournamentId) return;
+    
+    const newMultiplier = prompt(
+        `Edit Score Multiplier for Round ${roundNumber}\n\n` +
+        `Current multiplier: ✕${currentMultiplier}\n\n` +
+        `Enter new multiplier (e.g., 1, 1.5, 2, 3):`,
+        currentMultiplier
+    );
+    
+    if (!newMultiplier) return; // User cancelled
+    
+    const multiplierValue = parseFloat(newMultiplier);
+    
+    if (isNaN(multiplierValue) || multiplierValue <= 0) {
+        showToast('Invalid multiplier! Must be a positive number.', 'error');
+        return;
+    }
+    
+    try {
+        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
+        await updateDoc(roundRef, {
+            scoreMultiplier: multiplierValue
+        });
+        
+        showToast(`✅ Round ${roundNumber} multiplier updated to ✕${multiplierValue}\n\nAll scores will recalculate automatically.`, 'success');
+        
+        // Refresh the round history to show new multiplier
+        loadRoundsHistory();
+        
+        // Refresh current round info if this is the current round
+        const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
+        const tournamentData = tournamentDoc.data();
+        if (tournamentData.currentRound === roundNumber) {
+            // Trigger a refresh of the entire tournament view
+            selectTournament(currentTournamentId);
+        }
+        
+    } catch (error) {
+        console.error('Error updating round multiplier:', error);
+        showToast('Error updating multiplier: ' + error.message, 'error');
+    }
+};
+
 // Start new round
 // Move to Next Round - Creates new round in staging state
 moveToNextRoundBtn.addEventListener('click', async () => {
@@ -3137,6 +3595,7 @@ moveToNextRoundBtn.addEventListener('click', async () => {
             roundNumber: nextRound,
             status: 'staging',
             timerDuration: defaultTimer, // Store in minutes (use tournament default)
+            scoreMultiplier: 1, // Default multiplier is 1x
             startedAt: null,
             endedAt: null,
             createdAt: serverTimestamp()
@@ -3148,7 +3607,7 @@ moveToNextRoundBtn.addEventListener('click', async () => {
             roundInProgress: false
         });
         
-        showToast(`Moved to Round ${nextRound}!\n\nTimer: ${defaultTimer} minutes (editable in UI)\nRound is now in staging. Assign players to tables, then click "Start Round" when ready.`, "success");
+        showToast(`Moved to Round ${nextRound}!\n\nTimer: ${defaultTimer} minutes\nScore Multiplier: 1x\n(Both editable in round info)\n\nRound is in staging. Assign players to tables, then click "Start Round" when ready.`, "success");
         selectTournament(currentTournamentId); // Refresh
     } catch (error) {
         console.error('Error moving to next round:', error);
@@ -3339,10 +3798,43 @@ window.updateRoundTimer = async function(newValue, originalValue) {
         
         // No need to refresh, just update the input's original value for next comparison
         document.getElementById('editRoundTimer').setAttribute('onchange', `updateRoundTimer(this.value, ${newDuration})`);
+        showToast(`Round timer updated to ${newDuration} minutes`, 'success');
     } catch (error) {
         console.error('Error updating timer:', error);
         showToast('Error updating timer: ' + error.message, 'error');
         document.getElementById('editRoundTimer').value = originalValue;
+    }
+};
+
+// Global function for updating score multiplier (staging state)
+window.updateScoreMultiplier = async function(newValue, originalValue) {
+    if (!currentTournamentId || !currentRoundData) return;
+    
+    const newMultiplier = parseFloat(newValue);
+    if (isNaN(newMultiplier) || newMultiplier <= 0) {
+        showToast('Invalid input. Multiplier must be a positive number.', 'warning');
+        document.getElementById('editScoreMultiplier').value = originalValue;
+        return;
+    }
+    
+    if (newMultiplier === originalValue) return; // No change
+    
+    try {
+        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', currentRoundData.id);
+        await updateDoc(roundRef, {
+            scoreMultiplier: newMultiplier
+        });
+        
+        // Update local data
+        currentRoundData.scoreMultiplier = newMultiplier;
+        
+        // No need to refresh, just update the input's original value for next comparison
+        document.getElementById('editScoreMultiplier').setAttribute('onchange', `updateScoreMultiplier(this.value, ${newMultiplier})`);
+        showToast(`Score multiplier updated to ${newMultiplier}x`, 'success');
+    } catch (error) {
+        console.error('Error updating multiplier:', error);
+        showToast('Error updating multiplier: ' + error.message, 'error');
+        document.getElementById('editScoreMultiplier').value = originalValue;
     }
 };
 
@@ -3434,11 +3926,21 @@ endRoundBtn.addEventListener('click', async () => {
             console.error('Error fetching round participants:', error);
         }
         
-        // Use shared cut line algorithm
+        // Use shared cut line algorithm with new scoring system
         const originalPlayerCount = allPlayers.length;
         
-        // Sort players for cutting (worst first)
-        const sortedPlayers = sortPlayersForCutLine(activePlayers, roundParticipants);
+        // Build rounds map and table players map for scoring
+        const roundsMap = await buildRoundsMap(currentTournamentId);
+        const tablePlayersMap = await buildTablePlayersMapFromRound(currentTournamentId, currentRound);
+        
+        // Sort players for cutting (worst first) using new scoring algorithm
+        const sortedPlayers = sortPlayersForCutLine(activePlayers, currentRound, roundsMap, tablePlayersMap);
+        
+        // Add tournament scores to sorted players for use in modal display
+        sortedPlayers.forEach(p => {
+            p.tournamentScore = calculateTournamentScore(p, roundsMap);
+            p.roundScore = calculateRoundScore(p, currentRound, roundsMap);
+        });
         
         // Calculate target using shared function
         const { targetRemaining, idealTarget, targetPercentage, chosenOption } = calculateCutLineTarget(
@@ -3478,26 +3980,24 @@ endRoundBtn.addEventListener('click', async () => {
                 <p><strong>Will Remain:</strong> ${remainingCount} players</p>
             `;
             
-            // Group players by score for better display
+            // Group players by tournament score and round score for better display
             const scoreMap = new Map();
             
             playersToCut.forEach(p => {
-                const score = p.wins || 0;
-                const participantData = roundParticipants[p.id];
-                const scoreEvents = participantData?.scoreEvents || [];
-                const roundWins = scoreEvents.reduce((sum, e) => sum + e.delta, 0);
-                const key = `${score}-${roundWins}`; // Group by both total and round wins
+                const tournamentScore = p.tournamentScore || 0;
+                const roundScore = p.roundScore || 0;
+                const key = `${tournamentScore}-${roundScore}`; // Group by both total and round scores
                 
                 if (!scoreMap.has(key)) {
-                    scoreMap.set(key, { score, roundWins, names: [] });
+                    scoreMap.set(key, { tournamentScore, roundScore, names: [] });
                 }
                 scoreMap.get(key).names.push(p.name);
             });
             
-            // Sort by score (ascending - worst first), then by round wins
+            // Sort by score (ascending - worst first), then by round score
             const sortedGroups = Array.from(scoreMap.values()).sort((a, b) => {
-                if (a.score !== b.score) return a.score - b.score;
-                return a.roundWins - b.roundWins;
+                if (a.tournamentScore !== b.tournamentScore) return a.tournamentScore - b.tournamentScore;
+                return a.roundScore - b.roundScore;
             });
             
             playersListHTML = `
@@ -3505,9 +4005,11 @@ endRoundBtn.addEventListener('click', async () => {
                 <div style="background: #fee2e2; border: 1px solid #ef4444; border-radius: 8px; padding: 15px; max-height: 200px; overflow-y: auto;">
             `;
             sortedGroups.forEach(group => {
+                const tournamentScoreText = group.tournamentScore > 0 ? `+${group.tournamentScore}` : group.tournamentScore;
+                const roundScoreText = group.roundScore > 0 ? `+${group.roundScore}` : group.roundScore;
                 playersListHTML += `
                     <div style="margin-bottom: 10px;">
-                        <strong>${group.score} wins (+${group.roundWins} this round):</strong><br>
+                        <strong>${tournamentScoreText} pts (${roundScoreText} this round):</strong><br>
                         <span style="color: #6b7280;">${group.names.join(', ')}</span>
                     </div>
                 `;
@@ -3735,45 +4237,39 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
                 const tablesNeeded = Math.ceil(remainingPlayers / 4);
                 
                 if (activeTables.length >= tablesNeeded && remainingPlayers % 4 === 0) {
-                    // Auto-assign using batch
+                    // Auto-assign using batch (using random algorithm)
                     const assignBatch = writeBatch(db);
                     const positions = ['East', 'South', 'West', 'North'];
                     
-                    // Shuffle remaining players for random assignment
-                    const shuffledPlayers = remainingPlayerDocs
-                        .map(doc => ({ id: doc.id, ...doc.data() }))
-                        .sort(() => Math.random() - 0.5);
+                    // Get remaining players and assign using random algorithm
+                    const playersList = remainingPlayerDocs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    const tableAssignments = assignPlayersByAlgorithm(playersList, 'random');
                     
-                    let playerIndex = 0;
-                    
-                    for (let i = 0; i < tablesNeeded; i++) {
+                    for (let i = 0; i < tablesNeeded && i < tableAssignments.length; i++) {
                         const table = activeTables[i];
                         const tableRef = doc(db, 'tournaments', currentTournamentId, 'tables', table.id);
-                        const tablePlayers = [];
+                        const tablePlayers = tableAssignments[i];
+                        const tablePlayerIds = [];
                         const tablePositions = {};
                         
-                        for (let j = 0; j < 4; j++) {
-                            if (playerIndex < shuffledPlayers.length) {
-                                const player = shuffledPlayers[playerIndex];
-                                const position = positions[j];
-                                
-                                tablePlayers.push(player.id);
-                                tablePositions[position] = player.id;
-                                
-                                // Assign player to table
-                                const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', player.id);
-                                assignBatch.update(playerRef, {
-                                    tableId: table.id,
-                                    position: position
-                                });
-                                
-                                playerIndex++;
-                            }
+                        for (let j = 0; j < tablePlayers.length; j++) {
+                            const player = tablePlayers[j];
+                            const position = positions[j];
+                            
+                            tablePlayerIds.push(player.id);
+                            tablePositions[position] = player.id;
+                            
+                            // Assign player to table
+                            const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', player.id);
+                            assignBatch.update(playerRef, {
+                                tableId: table.id,
+                                position: position
+                            });
                         }
                         
                         // Update table
                         assignBatch.update(tableRef, {
-                            players: tablePlayers,
+                            players: tablePlayerIds,
                             positions: tablePositions
                         });
                     }
@@ -3787,6 +4283,7 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
                         roundNumber: currentRound + 1,
                         status: 'staging',
                         timerDuration: defaultTimer,
+                        scoreMultiplier: 1, // Default multiplier is 1x
                         createdAt: serverTimestamp(),
                         startedAt: null,
                         endedAt: null
@@ -3943,27 +4440,13 @@ document.getElementById('createPlayoffBtn').addEventListener('click', async () =
         // Get all active players sorted by ranking (best first)
         const activePlayers = Object.values(playersData).filter(p => !p.eliminated);
         
-        // Get round participants to calculate per-round wins for proper sorting
-        let roundParticipants = {};
-        try {
-            const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
-            for (const roundDoc of roundsSnap.docs) {
-                const roundData = roundDoc.data();
-                if (roundData.roundNumber === currentRound) {
-                    const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundDoc.id, 'participants'));
-                    participantsSnap.forEach(pDoc => {
-                        const pData = pDoc.data();
-                        roundParticipants[pData.playerId] = pData;
-                    });
-                    break;
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching round participants:', error);
-        }
+        // Build rounds map and table players map for scoring
+        const roundsMap = await buildRoundsMap(currentTournamentId);
+        const lastCompletedRound = roundsMap._lastCompletedRound || 0;
+        const tablePlayersMap = await buildTablePlayersMapFromRound(currentTournamentId, lastCompletedRound);
         
-        // Sort players for ranking (best performers first)
-        const sortedPlayers = sortPlayersForLeaderboard(activePlayers, roundParticipants);
+        // Sort players for ranking (best performers first) using new scoring system
+        const sortedPlayers = sortPlayersForLeaderboard(activePlayers, lastCompletedRound, roundsMap, tablePlayersMap);
         
         // Select top N players for playoff
         const playoffPlayers = sortedPlayers.slice(0, playoffPlayerCount);
@@ -3975,7 +4458,9 @@ document.getElementById('createPlayoffBtn').addEventListener('click', async () =
         confirmHtml += `<p style="margin-top: 15px;"><strong>Top ${playoffPlayerCount} player(s) will participate:</strong></p>`;
         confirmHtml += `<div style="margin: 10px 0; padding: 10px; background: #f3f4f6; border-radius: 6px; max-height: 200px; overflow-y: auto; font-size: 13px;">`;
         playoffPlayers.slice(0, 10).forEach((p, i) => {
-            confirmHtml += `<div style="padding: 3px 0;">${i + 1}. ${p.name} (${p.wins || 0} wins)</div>`;
+            const score = calculateTournamentScore(p, roundsMap);
+            const scoreText = score > 0 ? `+${score}` : score;
+            confirmHtml += `<div style="padding: 3px 0;">${i + 1}. ${p.name} (${scoreText} pts)</div>`;
         });
         if (playoffPlayers.length > 10) {
             confirmHtml += `<div style="padding: 3px 0; color: #6b7280;">...and ${playoffPlayers.length - 10} more</div>`;
@@ -3999,6 +4484,7 @@ document.getElementById('createPlayoffBtn').addEventListener('click', async () =
                         roundNumber: playoffRoundNumber,
                         status: 'staging',
                         timerDuration: defaultTimer,
+                        scoreMultiplier: 1, // Default multiplier is 1x
                         isPlayoff: true,
                         playoffPlayerCount: playoffPlayerCount,
                         startedAt: null,
@@ -4058,9 +4544,10 @@ document.getElementById('autoAssignTablesBtn').addEventListener('click', async (
             return;
         }
         
-        // Shuffle and assign
-        const shuffled = [...activePlayers].sort(() => Math.random() - 0.5);
-        const numTables = shuffled.length / 4;
+        // Use random algorithm for post-round auto-assignment
+        // (Could be enhanced later to allow algorithm selection)
+        const tableAssignments = assignPlayersByAlgorithm(activePlayers, 'random');
+        const numTables = tableAssignments.length;
         const positions = ['East', 'South', 'West', 'North'];
         
         // Get next table number
@@ -4071,7 +4558,7 @@ document.getElementById('autoAssignTablesBtn').addEventListener('click', async (
         // Create tables and get their IDs first
         const tableRefs = [];
         for (let i = 0; i < numTables; i++) {
-            const tablePlayers = shuffled.slice(i * 4, (i + 1) * 4);
+            const tablePlayers = tableAssignments[i];
             const playerIds = tablePlayers.map(p => p.id);
             const positionsMap = {};
             tablePlayers.forEach((p, idx) => {
@@ -5632,6 +6119,7 @@ window.addWinToTable = async function(roundId, tableId) {
         const scoreEvent = {
             timestamp: newTimestamp,
             delta: delta,
+            roundNumber: roundData.roundNumber, // CRITICAL: needed for round score calculations
             addedAt: Timestamp.now() // When admin made this adjustment
         };
         

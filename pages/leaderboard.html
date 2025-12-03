@@ -371,7 +371,14 @@
             getDocs,
             onSnapshot
         } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-        import { calculateCutLineTarget, sortPlayersForCutLine, sortPlayersForLeaderboard } from "../js/cutline-utils.js";
+        import { 
+            calculateCutLineTarget, 
+            sortPlayersForCutLine, 
+            sortPlayersForLeaderboard,
+            calculateTournamentScore,
+            calculateRoundScore,
+            calculateTableRoundScore
+        } from "../js/cutline-utils.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDI0fUdOj9fLT92VEBQCs0rGPWm0cgIEhQ",
@@ -392,6 +399,97 @@
         let previousPositions = {}; // Track previous positions for movement indicators
         let currentTournamentData = null; // Store full tournament data
         let roundParticipants = {}; // Store round start snapshots for tie-breaking
+        let roundsMap = {}; // Map of roundNumber to round data (scoreMultiplier, etc.)
+        let currentRoundData = null; // Current round data for displaying multiplier
+        
+        /**
+         * Build rounds map with score multipliers
+         */
+        async function buildRoundsMap(tournamentId) {
+            const map = {};
+            currentRoundData = null;
+            let lastCompletedRound = 0;
+            
+            try {
+                const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
+                roundsSnap.forEach(doc => {
+                    const roundData = doc.data();
+                    map[roundData.roundNumber] = {
+                        scoreMultiplier: roundData.scoreMultiplier || 1,
+                        timerDuration: roundData.timerDuration,
+                        status: roundData.status
+                    };
+                    
+                    // Track the highest completed round number
+                    if (roundData.status === 'completed' && roundData.roundNumber > lastCompletedRound) {
+                        lastCompletedRound = roundData.roundNumber;
+                    }
+                    
+                    // Store current round data for display
+                    if (roundData.roundNumber === currentTournamentData?.currentRound) {
+                        currentRoundData = { id: doc.id, ...roundData };
+                    }
+                });
+            } catch (error) {
+                console.error('Error building rounds map:', error);
+            }
+            
+            map._lastCompletedRound = lastCompletedRound;
+            return map;
+        }
+        
+        /**
+         * Build table players map from round participants (for historical table groupings)
+         */
+        async function buildTablePlayersMapFromRound(tournamentId, roundNumber, allPlayers) {
+            const map = {};
+            
+            if (roundNumber <= 0) return map;
+            
+            try {
+                // Find the round document for this round number
+                const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
+                let targetRoundId = null;
+                
+                for (const roundDoc of roundsSnap.docs) {
+                    const roundData = roundDoc.data();
+                    if (roundData.roundNumber === roundNumber) {
+                        targetRoundId = roundDoc.id;
+                        break;
+                    }
+                }
+                
+                if (!targetRoundId) return map;
+                
+                // Get participants from that round (snapshot of player data at round start)
+                const participantsSnap = await getDocs(
+                    collection(db, 'tournaments', tournamentId, 'rounds', targetRoundId, 'participants')
+                );
+                
+                // Build map of tableId to players who were at that table during this round
+                const playersById = {};
+                allPlayers.forEach(p => playersById[p.id] = p);
+                
+                participantsSnap.forEach(doc => {
+                    const participant = doc.data();
+                    const tableId = participant.tableId || 'unassigned';
+                    
+                    if (!map[tableId]) {
+                        map[tableId] = [];
+                    }
+                    
+                    // Use the full player data (with scoreEvents) for calculations
+                    const fullPlayer = playersById[participant.playerId];
+                    if (fullPlayer) {
+                        map[tableId].push(fullPlayer);
+                    }
+                });
+            } catch (error) {
+                console.error('Error building table players map from round:', error);
+            }
+            
+            return map;
+        }
 
         // Get tournament ID from URL params or localStorage
         function getTournamentId() {
@@ -522,7 +620,46 @@
 
                 // Set up real-time listener for players
                 setupPlayersListener();
+                
+                // Set up real-time listener for rounds (to detect multiplier changes)
+                setupRoundsListener();
             }
+        }
+
+        async function setupRoundsListener() {
+            // Listen for changes to rounds (especially multiplier changes)
+            const roundsRef = collection(db, 'tournaments', currentTournamentId, 'rounds');
+            
+            onSnapshot(roundsRef, (snapshot) => {
+                // Rebuild rounds map with updated multipliers
+                const newRoundsMap = {};
+                let lastCompletedRound = 0;
+                
+                snapshot.forEach(doc => {
+                    const roundData = doc.data();
+                    newRoundsMap[roundData.roundNumber] = {
+                        scoreMultiplier: roundData.scoreMultiplier || 1,
+                        timerDuration: roundData.timerDuration,
+                        status: roundData.status
+                    };
+                    
+                    // Track the highest completed round number
+                    if (roundData.status === 'completed' && roundData.roundNumber > lastCompletedRound) {
+                        lastCompletedRound = roundData.roundNumber;
+                    }
+                    
+                    // Store current round data for display
+                    if (roundData.roundNumber === currentTournamentData?.currentRound) {
+                        currentRoundData = { id: doc.id, ...roundData };
+                    }
+                });
+                
+                newRoundsMap._lastCompletedRound = lastCompletedRound;
+                roundsMap = newRoundsMap;
+                
+                // Force a refresh of the players listener to recalculate scores
+                // The players listener will pick up the updated roundsMap
+            });
         }
 
         async function setupPlayersListener() {
@@ -593,12 +730,23 @@
             });
         }
 
-        function displayLeaderboard(players) {
+        async function displayLeaderboard(players) {
             if (players.length === 0) {
                 document.getElementById('leaderboardContainer').innerHTML = 
                     '<div class="empty-state">No players registered yet.</div>';
                 return;
             }
+            
+            // Build rounds map for score multipliers
+            roundsMap = await buildRoundsMap(currentTournamentId);
+            
+            // Use last COMPLETED round for tie-breaking, not current round
+            // If tournament is in Round 2 staging, we want Round 1 scores for tie-breaking
+            const lastCompletedRound = roundsMap._lastCompletedRound || 0;
+            const currentRound = currentTournamentData?.currentRound || 0;
+            
+            // Build table players map FROM the last completed round (historical table groupings)
+            const tablePlayersMap = await buildTablePlayersMapFromRound(currentTournamentId, lastCompletedRound, players);
             
             // Generate smart abbreviated names
             const abbreviatedNames = {};
@@ -675,16 +823,17 @@
             const activePlayers = players.filter(p => !p.eliminated);
             const eliminatedPlayers = players.filter(p => p.eliminated);
 
-            // Sort active players using the SAME algorithm as cut line (but best-first)
-            // This ensures consistent tie-breaking with the cut line logic
-            const sortedActivePlayers = sortPlayersForLeaderboard(activePlayers, roundParticipants);
+            // Sort active players using the NEW scoring algorithm with last completed round
+            const sortedActivePlayers = sortPlayersForLeaderboard(activePlayers, lastCompletedRound, roundsMap, tablePlayersMap);
             
-            // Sort eliminated players by elimination round, then by wins
+            // Sort eliminated players by elimination round, then by tournament score
             eliminatedPlayers.sort((a, b) => {
                 if (b.eliminatedInRound !== a.eliminatedInRound) {
                     return (b.eliminatedInRound || 0) - (a.eliminatedInRound || 0);
                 }
-                return (b.wins || 0) - (a.wins || 0);
+                const aScore = calculateTournamentScore(a, roundsMap);
+                const bScore = calculateTournamentScore(b, roundsMap);
+                return bScore - aScore;
             });
 
             // Calculate cut line for cutline tournaments
@@ -695,8 +844,8 @@
                 sortedActivePlayers.length > 0) {
                 
                 // Use the EXACT same algorithm as admin panel
-                // Sort players for cut line calculation (worst first)
-                const sortedForCut = sortPlayersForCutLine(sortedActivePlayers, roundParticipants);
+                // Sort players for cut line calculation (worst first) using last completed round
+                const sortedForCut = sortPlayersForCutLine(sortedActivePlayers, lastCompletedRound, roundsMap, tablePlayersMap);
                 
                 // Calculate target - use all players (including eliminated) for original count
                 const allPlayersCount = players.length;
@@ -727,21 +876,58 @@
             }
             
             // Calculate golf-style positions (ties get same rank) for active players
+            // Players are tied if ALL tie-breaker criteria match
             const playersWithPositions = [];
             let currentRank = 1;
             
             for (let i = 0; i < sortedActivePlayers.length; i++) {
                 const player = sortedActivePlayers[i];
-                const playerWins = player.wins || 0;
                 
-                // If this player has same wins as previous, they get same rank
-                if (i > 0 && playerWins === (sortedActivePlayers[i - 1].wins || 0)) {
-                    playersWithPositions.push({ ...player, rank: playersWithPositions[i - 1].rank });
+                // Check if this player is tied with previous player across ALL criteria
+                if (i > 0) {
+                    const prevPlayer = sortedActivePlayers[i - 1];
+                    
+                    const playerTournamentScore = calculateTournamentScore(player, roundsMap);
+                    const prevTournamentScore = calculateTournamentScore(prevPlayer, roundsMap);
+                    const playerRoundScore = calculateRoundScore(player, lastCompletedRound, roundsMap);
+                    const prevRoundScore = calculateRoundScore(prevPlayer, lastCompletedRound, roundsMap);
+                    const playerLastWin = player.lastWinAt?.toMillis() || 0;
+                    const prevLastWin = prevPlayer.lastWinAt?.toMillis() || 0;
+                    
+                    // Get table scores - find which table group each player belongs to
+                    let playerTablePlayers = [player];
+                    let prevTablePlayers = [prevPlayer];
+                    
+                    for (const [tableId, players] of Object.entries(tablePlayersMap)) {
+                        if (players.some(p => p.id === player.id)) {
+                            playerTablePlayers = players;
+                        }
+                        if (players.some(p => p.id === prevPlayer.id)) {
+                            prevTablePlayers = players;
+                        }
+                    }
+                    
+                    const playerTableScore = calculateTableRoundScore(playerTablePlayers, lastCompletedRound, roundsMap);
+                    const prevTableScore = calculateTableRoundScore(prevTablePlayers, lastCompletedRound, roundsMap);
+                    
+                    // Players are tied ONLY if ALL criteria match
+                    const isTied = (
+                        playerTournamentScore === prevTournamentScore &&
+                        playerRoundScore === prevRoundScore &&
+                        playerLastWin === prevLastWin &&
+                        playerTableScore === prevTableScore
+                    );
+                    
+                    if (isTied) {
+                        playersWithPositions.push({ ...player, rank: playersWithPositions[i - 1].rank });
+                    } else {
+                        playersWithPositions.push({ ...player, rank: currentRank });
+                    }
                 } else {
                     playersWithPositions.push({ ...player, rank: currentRank });
                 }
                 
-                currentRank = i + 2; // Next available rank (golf scoring)
+                currentRank = i + 2; // Next available rank (golf scoring: 1,2,3,4,4,4,4,8)
             }
 
             // Calculate movement indicators
@@ -780,11 +966,14 @@
                 
                 const displayRank = rank || '—';
 
-                // Calculate round wins from scoreEvents
-                const participantData = roundParticipants[player.id];
-                const scoreEvents = participantData?.scoreEvents || [];
-                const roundWins = scoreEvents.reduce((sum, e) => sum + e.delta, 0);
-                const totalWins = player.wins || 0;
+                // Calculate tournament score and round score using new scoring system
+                // Use last completed round for display (matches tie-breaking)
+                const tournamentScore = calculateTournamentScore(player, roundsMap);
+                const roundScore = lastCompletedRound > 0 ? calculateRoundScore(player, lastCompletedRound, roundsMap) : 0;
+                
+                // Format scores with + for positive, nothing for negative/zero
+                const tournamentScoreText = tournamentScore > 0 ? `+${tournamentScore}` : tournamentScore;
+                const roundScoreText = roundScore > 0 ? `+${roundScore}` : (roundScore < 0 ? roundScore : '0');
                 
                 // Calculate time since last win
                 let lastWinText = '—';
@@ -809,8 +998,8 @@
                     <div class="leaderboard-row" style="${rowStyle}">
                         <div class="rank ${rankClass}">${displayRank} ${movementIndicator}</div>
                         <div class="player-name">${player._displayName || player.name}${seatAssignment}</div>
-                        <div class="wins">${totalWins}</div>
-                        <div class="points">${roundWins}</div>
+                        <div class="wins">${tournamentScoreText}</div>
+                        <div class="points">${roundScoreText}</div>
                         <div class="last-win">${lastWinText}</div>
                     </div>
                 `;
@@ -843,14 +1032,22 @@
             
             for (let i = 0; i < eliminatedPlayers.length; i++) {
                 const player = eliminatedPlayers[i];
-                const playerWins = player.wins || 0;
                 
-                // Check if tied with previous eliminated player
-                if (i > 0 && playerWins === (eliminatedPlayers[i - 1].wins || 0) && 
-                    player.eliminatedInRound === eliminatedPlayers[i - 1].eliminatedInRound) {
-                    // Same rank as previous
-                    const prevRank = eliminatedRank - 1;
-                    activePlayersHTML += renderPlayer(player, prevRank, true, false);
+                // Check if tied with previous eliminated player (same round + same score)
+                if (i > 0) {
+                    const prevPlayer = eliminatedPlayers[i - 1];
+                    const playerScore = calculateTournamentScore(player, roundsMap);
+                    const prevPlayerScore = calculateTournamentScore(prevPlayer, roundsMap);
+                    
+                    if (playerScore === prevPlayerScore && 
+                        player.eliminatedInRound === prevPlayer.eliminatedInRound) {
+                        // Same rank as previous
+                        const prevRank = eliminatedRank - 1;
+                        activePlayersHTML += renderPlayer(player, prevRank, true, false);
+                    } else {
+                        activePlayersHTML += renderPlayer(player, eliminatedRank, true, false);
+                        eliminatedRank++;
+                    }
                 } else {
                     activePlayersHTML += renderPlayer(player, eliminatedRank, true, false);
                     eliminatedRank++;
@@ -925,15 +1122,30 @@
         function displayStats(players) {
             const activePlayers = players.filter(p => !p.eliminated && !p.isHistorical);
             const eliminatedPlayers = players.filter(p => p.eliminated);
-            const totalWins = players.reduce((sum, p) => sum + (p.wins || 0), 0);
             
-            // Get round info
+            // Calculate total scores across all players
+            const totalScores = players.reduce((sum, p) => sum + calculateTournamentScore(p, roundsMap), 0);
+            
+            // Get round info and multiplier
             const currentRound = currentTournamentData?.currentRound || 0;
+            const lastCompletedRound = roundsMap._lastCompletedRound || 0;
+            
+            // Show multiplier for the relevant round (in-progress or last completed)
+            const relevantRound = currentRoundData?.status === 'in_progress' ? currentRound : lastCompletedRound;
+            const scoreMultiplier = roundsMap[relevantRound]?.scoreMultiplier || 1;
+            
+            // Determine multiplier color and styling
+            const multiplierColor = scoreMultiplier > 1 ? '#f59e0b' : '#6b7280';
+            const multiplierSize = scoreMultiplier > 1 ? '48px' : '36px';
 
             document.getElementById('statsContainer').innerHTML = `
                 <div class="stat-card">
                     <div class="stat-value">R${currentRound}</div>
                     <div class="stat-label">Current Round</div>
+                </div>
+                <div class="stat-card" style="background: ${scoreMultiplier > 1 ? 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)' : '#f9fafb'};">
+                    <div class="stat-value" style="color: ${multiplierColor}; font-size: ${multiplierSize};">${scoreMultiplier}x</div>
+                    <div class="stat-label" style="color: ${multiplierColor};">Score Multiplier</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value">${activePlayers.length}</div>
@@ -942,10 +1154,6 @@
                 <div class="stat-card">
                     <div class="stat-value">${eliminatedPlayers.length}</div>
                     <div class="stat-label">Eliminated</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">${totalWins}</div>
-                    <div class="stat-label">Total Wins</div>
                 </div>
             `;
         }

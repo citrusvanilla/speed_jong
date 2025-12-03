@@ -1,6 +1,24 @@
 /**
  * Cut Line Tournament Utilities
  * Shared logic for calculating cut lines and eliminations
+ * 
+ * SCORING SYSTEM:
+ * - Players score points (+1) or penalties (-1) during rounds
+ * - Each round has a scoreMultiplier (default: 1x, can be set by admin)
+ * - Tournament Score = sum of (scoreEvent.delta × round.scoreMultiplier) for all rounds
+ * - Round Score = sum of (scoreEvent.delta × round.scoreMultiplier) for current round only
+ * - Table Round Score = sum of all 4 players' round scores at same table
+ * 
+ * RANKING ALGORITHM (tie-breaker hierarchy):
+ * 1. Tournament Score (higher is better)
+ * 2. Round Score (higher is better)
+ * 3. Last Win Timestamp (more recent is better)
+ * 4. Table Round Score (higher is better)
+ * 5. Name (alphabetically as final tie-breaker)
+ * 
+ * GOLF-STYLE RANKING:
+ * - Players with identical scores share the same rank
+ * - Next rank skips appropriately: 1, 2, 3, 4, 4, 4, 4, 8
  */
 
 /**
@@ -19,18 +37,21 @@ export function calculateCutLineTarget(originalPlayerCount, currentRound, totalR
     const idealTarget = Math.floor(originalPlayerCount * targetPercentage);
     
     // Helper function to check if a target splits a score group
+    // Note: activePlayers should already be sorted worst-first
     const splitsScoreGroup = (numRemaining) => {
         if (numRemaining <= 0 || numRemaining >= activePlayers.length) return false;
         
         const cutIndex = activePlayers.length - numRemaining;
-        const cutlineScore = activePlayers[cutIndex - 1]?.wins || 0;
+        // Get tournament score for the player at cutline
+        const cutlinePlayer = activePlayers[cutIndex - 1];
+        const cutlineScore = cutlinePlayer?.tournamentScore || 0;
         
         // Check if there are players on both sides of the cut with this score
         let hasScoreInCut = false;
         let hasScoreInKeep = false;
         
         for (let i = 0; i < activePlayers.length; i++) {
-            const playerScore = activePlayers[i].wins || 0;
+            const playerScore = activePlayers[i].tournamentScore || 0;
             if (playerScore === cutlineScore) {
                 if (i < cutIndex) hasScoreInCut = true;
                 else hasScoreInKeep = true;
@@ -85,46 +106,115 @@ export function calculateCutLineTarget(originalPlayerCount, currentRound, totalR
 }
 
 /**
+ * Calculate tournament score from score events with round multipliers
+ * @param {Object} participant - Player or participant object with scoreEvents
+ * @param {Object} roundsMap - Map of roundNumber to round data (with scoreMultiplier)
+ * @returns {number} Total tournament score
+ */
+export function calculateTournamentScore(participant, roundsMap = {}) {
+    const scoreEvents = participant.scoreEvents || [];
+    return scoreEvents.reduce((total, event) => {
+        const roundData = roundsMap[event.roundNumber];
+        const multiplier = roundData?.scoreMultiplier || 1;
+        return total + (event.delta * multiplier);
+    }, 0);
+}
+
+/**
+ * Calculate round score for current round
+ * @param {Object} participant - Player or participant object with scoreEvents
+ * @param {number} currentRound - Current round number
+ * @param {Object} roundsMap - Map of roundNumber to round data (with scoreMultiplier)
+ * @returns {number} Score for this round only
+ */
+export function calculateRoundScore(participant, currentRound, roundsMap = {}) {
+    const scoreEvents = participant.scoreEvents || [];
+    const roundData = roundsMap[currentRound];
+    const multiplier = roundData?.scoreMultiplier || 1;
+    
+    return scoreEvents
+        .filter(event => event.roundNumber === currentRound)
+        .reduce((total, event) => total + (event.delta * multiplier), 0);
+}
+
+/**
+ * Calculate table round score (sum of all players at table for this round)
+ * @param {Array} tablePlayers - Array of player objects at same table
+ * @param {number} currentRound - Current round number
+ * @param {Object} roundsMap - Map of roundNumber to round data (with scoreMultiplier)
+ * @returns {number} Total table score for this round
+ */
+export function calculateTableRoundScore(tablePlayers, currentRound, roundsMap = {}) {
+    return tablePlayers.reduce((total, player) => {
+        return total + calculateRoundScore(player, currentRound, roundsMap);
+    }, 0);
+}
+
+/**
  * Sort players for cut line elimination
  * Worst performers first (will be cut first)
  * 
  * Tie-breaking hierarchy:
- * 1. Total tournament wins (fewer = cut first)
- * 2. Wins gained this round (fewer = cut first)
- * 3. Total points scored (fewer = cut first) - proxy for games played at table
- * 4. Most recent win timestamp (older = cut first)
+ * 1. Tournament score (lower = cut first)
+ * 2. Round score (lower = cut first)
+ * 3. Last win timestamp (older = cut first)
+ * 4. Table round score (lower = cut first)
  * 
  * @param {Array} players - Array of player objects
- * @param {Object} roundParticipants - Map of playerId to round start snapshot
+ * @param {number} currentRound - Current round number
+ * @param {Object} roundsMap - Map of roundNumber to round data (with scoreMultiplier)
+ * @param {Object} tablePlayersMap - Map of tableId to array of player objects
  * @returns {Array} Sorted array (worst first)
  */
-export function sortPlayersForCutLine(players, roundParticipants = {}) {
+export function sortPlayersForCutLine(players, currentRound = 0, roundsMap = {}, tablePlayersMap = {}) {
     return [...players].sort((a, b) => {
-        const aWins = a.wins || 0;
-        const bWins = b.wins || 0;
+        // Primary: Tournament score (ascending - lower score = cut first)
+        const aTournamentScore = calculateTournamentScore(a, roundsMap);
+        const bTournamentScore = calculateTournamentScore(b, roundsMap);
         
-        // Primary sort: total tournament wins (ascending - worst first)
-        if (aWins !== bWins) return aWins - bWins;
+        if (aTournamentScore !== bTournamentScore) {
+            return aTournamentScore - bTournamentScore;
+        }
         
-        // Tie-breaker 1: wins gained THIS ROUND (ascending - fewer round wins gets cut)
-        const aRoundStart = roundParticipants[a.id]?.wins || 0;
-        const bRoundStart = roundParticipants[b.id]?.wins || 0;
-        const aRoundWins = aWins - aRoundStart;
-        const bRoundWins = bWins - bRoundStart;
+        // Tie-breaker 1: Round score (ascending - lower round score = cut first)
+        const aRoundScore = calculateRoundScore(a, currentRound, roundsMap);
+        const bRoundScore = calculateRoundScore(b, currentRound, roundsMap);
         
-        if (aRoundWins !== bRoundWins) return aRoundWins - bRoundWins;
+        if (aRoundScore !== bRoundScore) {
+            return aRoundScore - bRoundScore;
+        }
         
-        // Tie-breaker 2: total points (ascending - fewer points = fewer games played = cut first)
-        // Points are a proxy for total games played by the table this round
-        const aPoints = a.points || 0;
-        const bPoints = b.points || 0;
-        
-        if (aPoints !== bPoints) return aPoints - bPoints;
-        
-        // Tie-breaker 3: most recent win timestamp stays (oldest gets cut)
+        // Tie-breaker 2: Last win timestamp (ascending - older = cut first)
         const aLastWin = a.lastWinAt?.toMillis() || 0;
         const bLastWin = b.lastWinAt?.toMillis() || 0;
-        return aLastWin - bLastWin; // Ascending: older timestamp = lower number = cut first
+        
+        if (aLastWin !== bLastWin) {
+            return aLastWin - bLastWin;
+        }
+        
+        // Tie-breaker 3: Table round score (ascending - table with lower total score = cut first)
+        // Find which table group each player belongs to in the tablePlayersMap
+        let aTablePlayers = [a];
+        let bTablePlayers = [b];
+        
+        for (const [tableId, players] of Object.entries(tablePlayersMap)) {
+            if (players.some(p => p.id === a.id)) {
+                aTablePlayers = players;
+            }
+            if (players.some(p => p.id === b.id)) {
+                bTablePlayers = players;
+            }
+        }
+        
+        const aTableScore = calculateTableRoundScore(aTablePlayers, currentRound, roundsMap);
+        const bTableScore = calculateTableRoundScore(bTablePlayers, currentRound, roundsMap);
+        
+        if (aTableScore !== bTableScore) {
+            return aTableScore - bTableScore;
+        }
+        
+        // Final tie-breaker: Name (alphabetically)
+        return a.name.localeCompare(b.name);
     });
 }
 
@@ -133,42 +223,66 @@ export function sortPlayersForCutLine(players, roundParticipants = {}) {
  * Best performers first (opposite of cut line sort)
  * 
  * Tie-breaking hierarchy:
- * 1. Total tournament wins (more = ranked higher)
- * 2. Wins gained this round (more = ranked higher)
- * 3. Total points scored (more = ranked higher) - proxy for games played at table
- * 4. Most recent win timestamp (newer = ranked higher)
+ * 1. Tournament score (higher = ranked higher)
+ * 2. Round score (higher = ranked higher)
+ * 3. Last win timestamp (newer = ranked higher)
+ * 4. Table round score (higher = ranked higher)
  * 
  * @param {Array} players - Array of player objects
- * @param {Object} roundParticipants - Map of playerId to round start snapshot
+ * @param {number} currentRound - Current round number
+ * @param {Object} roundsMap - Map of roundNumber to round data (with scoreMultiplier)
+ * @param {Object} tablePlayersMap - Map of tableId to array of player objects
  * @returns {Array} Sorted array (best first)
  */
-export function sortPlayersForLeaderboard(players, roundParticipants = {}) {
+export function sortPlayersForLeaderboard(players, currentRound = 0, roundsMap = {}, tablePlayersMap = {}) {
     return [...players].sort((a, b) => {
-        const aWins = a.wins || 0;
-        const bWins = b.wins || 0;
+        // Primary: Tournament score (descending - higher score = ranked higher)
+        const aTournamentScore = calculateTournamentScore(a, roundsMap);
+        const bTournamentScore = calculateTournamentScore(b, roundsMap);
         
-        // Primary: Total wins (descending - most wins first)
-        if (bWins !== aWins) return bWins - aWins;
+        if (bTournamentScore !== aTournamentScore) {
+            return bTournamentScore - aTournamentScore;
+        }
         
-        // Tie-breaker 1: Round wins (descending - most round wins first)
-        const aRoundStart = roundParticipants[a.id]?.wins || 0;
-        const bRoundStart = roundParticipants[b.id]?.wins || 0;
-        const aRoundWins = aWins - aRoundStart;
-        const bRoundWins = bWins - bRoundStart;
+        // Tie-breaker 1: Round score (descending - higher round score = ranked higher)
+        const aRoundScore = calculateRoundScore(a, currentRound, roundsMap);
+        const bRoundScore = calculateRoundScore(b, currentRound, roundsMap);
         
-        if (bRoundWins !== aRoundWins) return bRoundWins - aRoundWins;
+        if (bRoundScore !== aRoundScore) {
+            return bRoundScore - aRoundScore;
+        }
         
-        // Tie-breaker 2: Total points (descending - more points = more games played = ranked higher)
-        // Points are a proxy for total games played by the table this round
-        const aPoints = a.points || 0;
-        const bPoints = b.points || 0;
-        
-        if (bPoints !== aPoints) return bPoints - aPoints;
-        
-        // Tie-breaker 3: Most recent win first (descending - newest first)
+        // Tie-breaker 2: Last win timestamp (descending - newer = ranked higher)
         const aLastWin = a.lastWinAt?.toMillis() || 0;
         const bLastWin = b.lastWinAt?.toMillis() || 0;
-        return bLastWin - aLastWin; // Descending: newer timestamp = higher number = shown first
+        
+        if (bLastWin !== aLastWin) {
+            return bLastWin - aLastWin;
+        }
+        
+        // Tie-breaker 3: Table round score (descending - table with higher total score = ranked higher)
+        // Find which table group each player belongs to in the tablePlayersMap
+        let aTablePlayers = [a];
+        let bTablePlayers = [b];
+        
+        for (const [tableId, players] of Object.entries(tablePlayersMap)) {
+            if (players.some(p => p.id === a.id)) {
+                aTablePlayers = players;
+            }
+            if (players.some(p => p.id === b.id)) {
+                bTablePlayers = players;
+            }
+        }
+        
+        const aTableScore = calculateTableRoundScore(aTablePlayers, currentRound, roundsMap);
+        const bTableScore = calculateTableRoundScore(bTablePlayers, currentRound, roundsMap);
+        
+        if (bTableScore !== aTableScore) {
+            return bTableScore - aTableScore;
+        }
+        
+        // Final tie-breaker: Name (alphabetically)
+        return a.name.localeCompare(b.name);
     });
 }
 
