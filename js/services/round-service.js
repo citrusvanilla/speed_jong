@@ -1,0 +1,263 @@
+/**
+ * Round Service
+ * Handles all round-related Firebase operations
+ */
+
+import { collection, doc, getDocs } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+import { BaseService } from './base-service.js';
+import { ROUND_STATUS } from '../config/constants.js';
+import { validateTimerDuration, validateMultiplier } from '../utils/validators.js';
+import { ErrorHandler } from '../utils/error-handler.js';
+
+export class RoundService extends BaseService {
+    constructor(db, tournamentId) {
+        super(db, `tournaments/${tournamentId}/rounds`);
+        this.tournamentId = tournamentId;
+    }
+    
+    /**
+     * Create a new round
+     * @param {number} roundNumber - Round number
+     * @param {Object} options - Round options { timerDuration, scoreMultiplier, isPlayoff }
+     * @returns {Promise<string>} Round ID
+     */
+    async createRound(roundNumber, options = {}) {
+        const {
+            timerDuration = 5,
+            scoreMultiplier = 1,
+            isPlayoff = false
+        } = options;
+        
+        const timerValidation = validateTimerDuration(timerDuration);
+        ErrorHandler.validateOrThrow(timerValidation, 'INVALID_TIMER');
+        
+        const multiplierValidation = validateMultiplier(scoreMultiplier);
+        ErrorHandler.validateOrThrow(multiplierValidation, 'INVALID_MULTIPLIER');
+        
+        const roundId = await this.create({
+            roundNumber,
+            status: ROUND_STATUS.STAGING,
+            timerDuration,
+            scoreMultiplier,
+            isPlayoff,
+            startedAt: null,
+            endedAt: null
+        });
+        
+        return roundId;
+    }
+    
+    /**
+     * Start a round
+     * @param {string} roundId - Round ID
+     * @returns {Promise<void>}
+     */
+    async startRound(roundId) {
+        await this.update(roundId, {
+            status: ROUND_STATUS.IN_PROGRESS,
+            startedAt: BaseService.serverTimestamp()
+        });
+    }
+    
+    /**
+     * End a round
+     * @param {string} roundId - Round ID
+     * @returns {Promise<void>}
+     */
+    async endRound(roundId) {
+        await this.update(roundId, {
+            status: ROUND_STATUS.COMPLETED,
+            endedAt: BaseService.serverTimestamp()
+        });
+    }
+    
+    /**
+     * Restart a round (set back to in progress)
+     * @param {string} roundId - Round ID
+     * @returns {Promise<void>}
+     */
+    async restartRound(roundId) {
+        await this.update(roundId, {
+            status: ROUND_STATUS.IN_PROGRESS,
+            endedAt: null
+        });
+    }
+    
+    /**
+     * Update round timer duration
+     * @param {string} roundId - Round ID
+     * @param {number} duration - Duration in minutes
+     * @returns {Promise<void>}
+     */
+    async updateTimer(roundId, duration) {
+        const validation = validateTimerDuration(duration);
+        ErrorHandler.validateOrThrow(validation, 'INVALID_TIMER');
+        
+        await this.update(roundId, { timerDuration: duration });
+    }
+    
+    /**
+     * Update round score multiplier
+     * @param {string} roundId - Round ID
+     * @param {number} multiplier - Score multiplier
+     * @returns {Promise<void>}
+     */
+    async updateMultiplier(roundId, multiplier) {
+        const validation = validateMultiplier(multiplier);
+        ErrorHandler.validateOrThrow(validation, 'INVALID_MULTIPLIER');
+        
+        await this.update(roundId, { scoreMultiplier: multiplier });
+    }
+    
+    /**
+     * Get round by number
+     * @param {number} roundNumber - Round number
+     * @returns {Promise<Object>} Round data
+     */
+    async getByNumber(roundNumber) {
+        const results = await this.query([
+            ['roundNumber', '==', roundNumber]
+        ], { limitCount: 1 });
+        
+        if (results.length === 0) {
+            throw ErrorHandler.createError(
+                `Round not found with number: ${roundNumber}`,
+                'NOT_FOUND'
+            );
+        }
+        
+        return results[0];
+    }
+    
+    /**
+     * Get all rounds sorted by number
+     * @returns {Promise<Array>} Array of rounds
+     */
+    async getAllRounds() {
+        return this.query([], { orderByField: 'roundNumber', orderDirection: 'asc' });
+    }
+    
+    /**
+     * Get completed rounds
+     * @returns {Promise<Array>} Array of completed rounds
+     */
+    async getCompletedRounds() {
+        return this.query([
+            ['status', '==', ROUND_STATUS.COMPLETED]
+        ], { orderByField: 'roundNumber', orderDirection: 'asc' });
+    }
+    
+    /**
+     * Get current (in progress) round
+     * @returns {Promise<Object|null>} Current round or null
+     */
+    async getCurrentRound() {
+        const results = await this.query([
+            ['status', '==', ROUND_STATUS.IN_PROGRESS]
+        ], { limitCount: 1 });
+        
+        return results.length > 0 ? results[0] : null;
+    }
+    
+    /**
+     * Get last completed round
+     * @returns {Promise<Object|null>} Last completed round or null
+     */
+    async getLastCompletedRound() {
+        const completed = await this.getCompletedRounds();
+        return completed.length > 0 ? completed[completed.length - 1] : null;
+    }
+    
+    /**
+     * Get round participants
+     * @param {string} roundId - Round ID
+     * @returns {Promise<Array>} Array of participants
+     */
+    async getParticipants(roundId) {
+        const participantsRef = collection(
+            this.db,
+            `tournaments/${this.tournamentId}/rounds/${roundId}/participants`
+        );
+        const snapshot = await getDocs(participantsRef);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    }
+    
+    /**
+     * Snapshot participants at round start
+     * @param {string} roundId - Round ID
+     * @param {Array} players - Array of player objects
+     * @returns {Promise<void>}
+     */
+    async snapshotParticipants(roundId, players) {
+        const promises = players.map(player => {
+            const participantRef = doc(
+                this.db,
+                `tournaments/${this.tournamentId}/rounds/${roundId}/participants`,
+                player.id
+            );
+            
+            return BaseService.prototype.create.call(
+                { db: this.db, collectionPath: `tournaments/${this.tournamentId}/rounds/${roundId}/participants` },
+                {
+                    playerId: player.id,
+                    name: player.name,
+                    wins: player.wins || 0,
+                    points: player.points || 0,
+                    scoreEvents: player.scoreEvents || [],
+                    tableId: player.tableId,
+                    position: player.position,
+                    lastWinAt: player.lastWinAt || null,
+                    snapshotAt: BaseService.serverTimestamp()
+                },
+                player.id
+            );
+        });
+        
+        await Promise.all(promises);
+    }
+    
+    /**
+     * Build rounds map with multipliers
+     * @returns {Promise<Object>} Map of roundNumber to round data
+     */
+    async buildRoundsMap() {
+        const rounds = await this.getAllRounds();
+        const map = {};
+        let lastCompletedRound = 0;
+        
+        rounds.forEach(round => {
+            map[round.roundNumber] = {
+                scoreMultiplier: round.scoreMultiplier || 1,
+                timerDuration: round.timerDuration,
+                status: round.status
+            };
+            
+            if (round.status === ROUND_STATUS.COMPLETED && round.roundNumber > lastCompletedRound) {
+                lastCompletedRound = round.roundNumber;
+            }
+        });
+        
+        map._lastCompletedRound = lastCompletedRound;
+        return map;
+    }
+    
+    /**
+     * Subscribe to rounds
+     * @param {Function} callback - Callback function(rounds)
+     * @returns {Function} Unsubscribe function
+     */
+    subscribeToRounds(callback) {
+        return this.subscribeToCollection(callback);
+    }
+    
+    /**
+     * Subscribe to a single round
+     * @param {string} roundId - Round ID
+     * @param {Function} callback - Callback function(round)
+     * @returns {Function} Unsubscribe function
+     */
+    subscribeToRound(roundId, callback) {
+        return this.subscribeToDocument(roundId, callback);
+    }
+}
+
