@@ -28,6 +28,40 @@ import {
     calculateTableRoundScore
 } from './cutline-utils.js';
 
+// Import Services
+import { TournamentService } from './services/tournament-service.js';
+import { PlayerService } from './services/player-service.js';
+import { TableService } from './services/table-service.js';
+import { RoundService } from './services/round-service.js';
+import { ScoreService } from './services/score-service.js';
+
+// Import Utilities
+import { 
+    formatTime,
+    formatDuration,
+    getWindSymbol,
+    formatFirebaseTimestamp,
+    formatTimeOnly,
+    formatScore,
+    formatMultiplier
+} from './utils/formatters.js';
+import {
+    validatePlayerName,
+    validateTournamentCode,
+    validateMultiplier,
+    validateTimerDuration
+} from './utils/validators.js';
+import { ErrorHandler } from './utils/error-handler.js';
+import { 
+    TOURNAMENT_TYPES,
+    TOURNAMENT_STATUS,
+    ROUND_STATUS,
+    POSITIONS,
+    STORAGE_KEYS,
+    ERROR_MESSAGES,
+    SUCCESS_MESSAGES
+} from './config/constants.js';
+
 // Firebase config
 const firebaseConfig = {
     apiKey: "AIzaSyDI0fUdOj9fLT92VEBQCs0rGPWm0cgIEhQ",
@@ -311,6 +345,13 @@ let unsubscribePlayers = null;
 let unsubscribeTables = null;
 let unsubscribeRounds = null;
 
+// Service instances (initialized when tournament is selected)
+let tournamentService = null;
+let playerService = null;
+let tableService = null;
+let roundService = null;
+let scoreService = null;
+
 // DOM Elements
 const tournamentSelect = document.getElementById('tournamentSelect');
 const createTournamentBtn = document.getElementById('createTournamentBtn');
@@ -388,7 +429,7 @@ async function loadTournaments() {
         });
         
         // Check for saved tournament selection
-        const savedTournamentId = localStorage.getItem('adminSelectedTournamentId');
+        const savedTournamentId = localStorage.getItem(STORAGE_KEYS.ADMIN_TOURNAMENT_ID);
         if (savedTournamentId) {
             // Verify the tournament still exists
             const tournamentExists = tournaments.find(t => t.id === savedTournamentId);
@@ -419,8 +460,15 @@ tournamentSelect.addEventListener('change', (e) => {
 async function selectTournament(tournamentId) {
     currentTournamentId = tournamentId;
     
+    // Initialize service instances for this tournament
+    tournamentService = new TournamentService(db);
+    playerService = new PlayerService(db, tournamentId);
+    tableService = new TableService(db, tournamentId);
+    roundService = new RoundService(db, tournamentId);
+    scoreService = new ScoreService(db, tournamentId);
+    
     // Save to localStorage for persistence across page reloads
-    localStorage.setItem('adminSelectedTournamentId', tournamentId);
+    localStorage.setItem(STORAGE_KEYS.ADMIN_TOURNAMENT_ID, tournamentId);
     
     noTournamentSelected.classList.add('hidden');
     tournamentContent.classList.remove('hidden');
@@ -453,8 +501,15 @@ async function selectTournament(tournamentId) {
 function deselectTournament() {
     currentTournamentId = null;
     
+    // Clear service instances
+    tournamentService = null;
+    playerService = null;
+    tableService = null;
+    roundService = null;
+    scoreService = null;
+    
     // Clear from localStorage
-    localStorage.removeItem('adminSelectedTournamentId');
+    localStorage.removeItem(STORAGE_KEYS.ADMIN_TOURNAMENT_ID);
     
     noTournamentSelected.classList.remove('hidden');
     tournamentContent.classList.add('hidden');
