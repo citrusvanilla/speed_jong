@@ -2509,11 +2509,6 @@ window.toggleTableActiveFromList = async function(tableId) {
     }
 };
 
-function getWindSymbol(position) {
-    const symbols = { East: '東', South: '南', West: '西', North: '北' };
-    return symbols[position] || '';
-}
-
 // Delete table function (called from table list)
 window.deleteTable = async function(tableId) {
     const table = tablesData[tableId];
@@ -3033,13 +3028,6 @@ deleteTournamentBtn.addEventListener('click', async () => {
         }
     );
 });
-
-// Format time helper
-function formatTime(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
 
 // Update admin timer display
 function updateAdminTimerDisplay() {
