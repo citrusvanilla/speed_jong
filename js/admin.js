@@ -14,7 +14,10 @@ import {
     orderBy,
     serverTimestamp,
     updateDoc,
-    writeBatch
+    writeBatch,
+    Timestamp,
+    increment,
+    arrayUnion
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 import { calculateCutLineTarget, sortPlayersForCutLine, sortPlayersForLeaderboard } from './cutline-utils.js';
 
@@ -1034,8 +1037,9 @@ document.getElementById('eliminatePlayersBtn').addEventListener('click', async (
         const scoreMap = new Map();
         playersToCut.forEach(p => {
             const score = p.wins || 0;
-            const roundStart = roundParticipants[p.id]?.wins || 0;
-            const roundWins = score - roundStart;
+            const participantData = roundParticipants[p.id];
+            const scoreEvents = participantData?.scoreEvents || [];
+            const roundWins = scoreEvents.reduce((sum, e) => sum + e.delta, 0);
             const key = `${score}-${roundWins}`;
             
             if (!scoreMap.has(key)) {
@@ -1291,6 +1295,7 @@ document.getElementById('importBulkPlayerBtn').addEventListener('click', async (
                 wins: 0,
                 points: 0,
                 lastWinAt: null,
+                scoreEvents: [], // Initialize empty scoreEvents array
                 eliminated: false,
                 eliminatedInRound: null
             });
@@ -1355,6 +1360,7 @@ document.getElementById('playerForm').addEventListener('submit', async (e) => {
                 wins: 0,
                 points: 0,
                 lastWinAt: null,
+                scoreEvents: [], // Initialize empty scoreEvents array
                 eliminated: false,
                 eliminatedInRound: null
             });
@@ -1593,19 +1599,16 @@ window.changePlayerScore = async function(playerId, playerName) {
 // Handle round selection in change score modal
 document.getElementById('changeScoreRound').addEventListener('change', async (e) => {
     const roundId = e.target.value;
-    const infoGroup = document.getElementById('changeScoreRoundInfoGroup');
-    const confirmBtn = document.getElementById('confirmChangeScoreBtn');
+    const eventsContainer = document.getElementById('changeScoreEventsContainer');
     
     if (!roundId) {
-        infoGroup.style.display = 'none';
-        confirmBtn.disabled = true;
+        eventsContainer.style.display = 'none';
         return;
     }
     
     try {
         // Find round data
         const round = currentChangeScoreData.rounds.find(r => r.id === roundId);
-        document.getElementById('changeScoreRoundNum').textContent = round.roundNumber;
         
         // Get participant data for this round
         const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants'));
@@ -1618,36 +1621,98 @@ document.getElementById('changeScoreRound').addEventListener('change', async (e)
             }
         });
         
-        if (participantData) {
-            const roundStart = participantData.wins || 0;
-            const currentPlayer = playersData[currentChangeScoreData.playerId];
-            const totalWins = currentPlayer.wins || 0;
-            const roundWins = totalWins - roundStart;
-            
-            document.getElementById('changeScoreRoundStart').textContent = roundStart;
-            document.getElementById('changeScoreRoundWins').textContent = roundWins;
-            document.getElementById('changeScoreNewWins').value = roundWins;
-            
-            currentChangeScoreData.selectedRound = {
-                roundId,
-                roundNumber: round.roundNumber,
-                participantId: participantData.id,
-                roundStart,
-                currentRoundWins: roundWins
-            };
-            
-            infoGroup.style.display = 'block';
-            confirmBtn.disabled = false;
-        } else {
+        if (!participantData) {
             showToast('Player did not participate in this round.', 'warning');
-            infoGroup.style.display = 'none';
-            confirmBtn.disabled = true;
+            eventsContainer.style.display = 'none';
+            return;
         }
+        
+        // Store selected round data
+        currentChangeScoreData.selectedRound = {
+            roundId,
+            roundNumber: round.roundNumber,
+            participantId: participantData.id,
+            roundData: round
+        };
+        
+        // Display score events
+        displayPlayerScoreEvents();
+        eventsContainer.style.display = 'block';
+        
     } catch (error) {
         console.error('Error loading round data:', error);
         showToast('Error loading round data: ' + error.message, 'error');
     }
 });
+
+// Display player's score events for selected round
+async function displayPlayerScoreEvents() {
+    if (!currentChangeScoreData?.selectedRound) return;
+    
+    const { roundId, participantId, roundNumber, roundData } = currentChangeScoreData.selectedRound;
+    
+    try {
+        // Get fresh participant data
+        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
+        const participantDoc = await getDoc(participantRef);
+        
+        if (!participantDoc.exists()) return;
+        
+        const participantData = participantDoc.data();
+        const scoreEvents = participantData.scoreEvents || [];
+        
+        // Get round start time for display
+        const roundStartTime = roundData.startedAt ? roundData.startedAt.toDate() : null;
+        
+        let eventsHTML = '';
+        if (scoreEvents.length === 0) {
+            eventsHTML = '<p style="color: #9ca3af; font-size: 13px; padding: 20px; text-align: center;">No score events for this round.</p>';
+        } else {
+            // Sort events chronologically
+            const sortedEvents = [...scoreEvents].map((event, index) => ({ ...event, originalIndex: index }))
+                .sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            
+            let runningTotal = 0;
+            
+            eventsHTML = sortedEvents.map(event => {
+                const eventDate = new Date(event.timestamp.toDate());
+                const clockTime = eventDate.toLocaleTimeString();
+                
+                // Calculate offset from round start
+                let offsetStr = '';
+                if (roundStartTime) {
+                    const offsetMs = eventDate - roundStartTime;
+                    const offsetMin = Math.floor(offsetMs / 60000);
+                    const offsetSec = Math.floor((offsetMs % 60000) / 1000);
+                    offsetStr = `+${offsetMin}m ${offsetSec}s`;
+                }
+                
+                const delta = event.delta || 1;
+                runningTotal += delta;
+                
+                const deltaColor = delta > 0 ? '#10b981' : '#ef4444';
+                const deltaText = delta > 0 ? '+1' : '-1';
+                
+                return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #f3f4f6;">
+                        <div style="flex: 1; font-size: 13px;">
+                            <span style="color: #667eea; font-weight: 600;">${offsetStr}</span>
+                            <span style="color: #9ca3af; font-size: 11px;">(${clockTime})</span>
+                            <span style="color: ${deltaColor}; font-weight: bold; margin-left: 10px;">${deltaText}</span>
+                            <span style="color: #9ca3af; font-size: 12px;">(Total: ${runningTotal})</span>
+                        </div>
+                        <button class="btn btn-small btn-secondary" onclick="deletePlayerScoreEvent('${roundId}', '${participantId}', ${event.originalIndex})" style="padding: 4px 8px; font-size: 11px; background: #ef4444;">Delete</button>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        document.getElementById('changeScoreEventsList').innerHTML = eventsHTML;
+        
+    } catch (error) {
+        console.error('Error displaying score events:', error);
+    }
+}
 
 // Cancel change score
 document.getElementById('cancelChangeScoreBtn').addEventListener('click', () => {
@@ -1655,58 +1720,206 @@ document.getElementById('cancelChangeScoreBtn').addEventListener('click', () => 
     currentChangeScoreData = null;
 });
 
-// Confirm change score
-document.getElementById('confirmChangeScoreBtn').addEventListener('click', async () => {
-    if (!currentChangeScoreData || !currentChangeScoreData.selectedRound) return;
+// Add score event button handler
+document.getElementById('addScoreEventBtn').addEventListener('click', async () => {
+    if (!currentChangeScoreData?.selectedRound) return;
     
-    const newRoundWins = parseInt(document.getElementById('changeScoreNewWins').value);
-    if (isNaN(newRoundWins) || newRoundWins < 0) {
-        showToast('Please enter a valid number of wins.', 'warning');
-        return;
+    const { roundId, participantId } = currentChangeScoreData.selectedRound;
+    
+    // Reuse the addWinToTable logic but for a specific player
+    await addScoreEventToPlayer(roundId, participantId);
+});
+
+// Add score event to a specific player
+window.addScoreEventToPlayer = async function(roundId, participantId) {
+    if (!currentTournamentId) return;
+    
+    try {
+        // Get round data
+        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
+        const roundDoc = await getDoc(roundRef);
+        const roundData = roundDoc.data();
+        const roundStartTime = roundData.startedAt ? roundData.startedAt.toDate() : null;
+        const roundDurationMin = roundData.timerDuration || 30;
+        
+        if (!roundStartTime) {
+            showToast('Round has not started yet!', 'error');
+            return;
+        }
+        
+        // Get participant data
+        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
+        const participantDoc = await getDoc(participantRef);
+        const participantData = participantDoc.data();
+        const playerName = participantData.name;
+        
+        // Prompt for score delta (+1 or -1)
+        const deltaStr = prompt(
+            `Add score event for ${playerName}\n\n` +
+            `Enter +1 to add a win or -1 to subtract a win:`,
+            '+1'
+        );
+        
+        if (!deltaStr) return;
+        
+        const delta = parseInt(deltaStr);
+        if (delta !== 1 && delta !== -1) {
+            showToast('Invalid input! Enter +1 or -1 only.', 'error');
+            return;
+        }
+        
+        // Prompt for offset
+        const now = new Date();
+        const currentOffsetMs = now - roundStartTime;
+        const currentOffsetMin = Math.max(0, Math.min(currentOffsetMs / 60000, roundDurationMin));
+        
+        const promptAction = delta > 0 ? 'add win' : 'subtract win';
+        const offsetStr = prompt(
+            `${promptAction.charAt(0).toUpperCase() + promptAction.slice(1)} for ${playerName}\n\n` +
+            `Round started at: ${roundStartTime.toLocaleTimeString()}\n` +
+            `Round duration: ${roundDurationMin} minutes\n\n` +
+            `Enter time offset (minutes from round start, max ${roundDurationMin}):\n` +
+            `Examples: "5" = 5 minutes, "5.5" = 5min 30sec`,
+            currentOffsetMin.toFixed(1)
+        );
+        
+        if (!offsetStr) return;
+        
+        const offsetMinutes = parseFloat(offsetStr);
+        if (isNaN(offsetMinutes) || offsetMinutes < 0) {
+            showToast('Invalid offset! Enter a positive number of minutes.', 'error');
+            return;
+        }
+        
+        if (offsetMinutes > roundDurationMin) {
+            showToast(`Invalid offset! Cannot exceed round duration of ${roundDurationMin} minutes.`, 'error');
+            return;
+        }
+        
+        // Calculate timestamp
+        const offsetMs = offsetMinutes * 60000;
+        const newDate = new Date(roundStartTime.getTime() + offsetMs);
+        const newTimestamp = Timestamp.fromDate(newDate);
+        
+        // Create score event
+        const scoreEvent = {
+            timestamp: newTimestamp,
+            delta: delta,
+            addedAt: Timestamp.now()
+        };
+        
+        const playerId = participantData.playerId;
+        const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
+        
+        // Update participant
+        await updateDoc(participantRef, {
+            wins: increment(delta),
+            scoreEvents: arrayUnion(scoreEvent),
+            lastWinAt: delta > 0 ? newTimestamp : participantData.lastWinAt
+        });
+        
+        // Update player
+        await updateDoc(playerRef, {
+            wins: increment(delta),
+            scoreEvents: arrayUnion(scoreEvent),
+            lastWinAt: delta > 0 ? newTimestamp : (await getDoc(playerRef)).data().lastWinAt
+        });
+        
+        showToast(`Score event added for ${playerName}!`, 'success');
+        
+        // Refresh display
+        displayPlayerScoreEvents();
+        
+    } catch (error) {
+        console.error('Error adding score event:', error);
+        showToast('Error adding score event: ' + error.message, 'error');
     }
+};
+
+// Delete score event for a specific player
+window.deletePlayerScoreEvent = async function(roundId, participantId, eventIndex) {
+    if (!currentTournamentId) return;
     
-    const { playerId, playerName, selectedRound } = currentChangeScoreData;
-    const { roundId, roundNumber, participantId, roundStart, currentRoundWins } = selectedRound;
-    
-    const delta = newRoundWins - currentRoundWins;
-    const newTotal = roundStart + newRoundWins;
-    
-    document.getElementById('changeScoreModal').classList.add('hidden');
-    
-    showConfirmAction(
-        'Change Player Score',
-        `<p>Change <strong>${playerName}'s</strong> Round ${roundNumber} score?</p>` +
-        `<p style="margin-top: 10px;">Current: <strong>${currentRoundWins}</strong> wins this round<br>` +
-        `New: <strong>${newRoundWins}</strong> wins this round</p>` +
-        `<p style="margin-top: 10px; padding: 10px; background: #fef3c7; border-radius: 6px;">` +
-        `Total wins will change from <strong>${roundStart + currentRoundWins}</strong> to <strong>${newTotal}</strong></p>`,
-        async () => {
-            try {
-                const batch = writeBatch(db);
-                
-                // Update player total wins
-                const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
-                batch.update(playerRef, {
-                    wins: newTotal
-                });
-                
-                // Update participant wins
-                const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
-                batch.update(participantRef, {
-                    wins: newTotal
-                });
-                
-                await batch.commit();
-                
-                showToast(`${playerName}'s score updated! Round ${roundNumber}: ${newRoundWins} wins, New total: ${newTotal} wins`, 'success');
-                currentChangeScoreData = null;
-            } catch (error) {
-                console.error('Error updating score:', error);
-                showToast('Error updating score: ' + error.message, 'error');
+    try {
+        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
+        const participantDoc = await getDoc(participantRef);
+        const participantData = participantDoc.data();
+        const scoreEvents = participantData.scoreEvents || [];
+        
+        if (eventIndex >= scoreEvents.length) {
+            showToast('Score event not found!', 'error');
+            return;
+        }
+        
+        const eventToDelete = scoreEvents[eventIndex];
+        const dateStr = new Date(eventToDelete.timestamp.toDate()).toLocaleString();
+        const delta = eventToDelete.delta || 1;
+        const deltaText = delta > 0 ? '+1' : '-1';
+        
+        if (!confirm(`Delete ${deltaText} score event?\n\nTimestamp: ${dateStr}\n\nThis will adjust total wins by ${-delta}.`)) {
+            return;
+        }
+        
+        // Remove from participant scoreEvents
+        const updatedScoreEvents = scoreEvents.filter((_, index) => index !== eventIndex);
+        
+        const participantUpdates = {
+            wins: increment(-delta),
+            scoreEvents: updatedScoreEvents
+        };
+        
+        // Update lastWinAt if needed
+        if (delta > 0) {
+            const remainingWins = updatedScoreEvents.filter(e => e.delta > 0);
+            if (remainingWins.length > 0) {
+                const sortedWins = [...remainingWins].sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+                participantUpdates.lastWinAt = sortedWins[0].timestamp;
+            } else {
+                participantUpdates.lastWinAt = null;
             }
         }
-    );
-});
+        
+        await updateDoc(participantRef, participantUpdates);
+        
+        // Update player document
+        const playerId = participantData.playerId;
+        const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
+        const playerDoc = await getDoc(playerRef);
+        const playerData = playerDoc.data();
+        const playerScoreEvents = playerData.scoreEvents || [];
+        
+        // Remove matching event from player
+        const updatedPlayerScoreEvents = playerScoreEvents.filter(event => 
+            event.timestamp.toMillis() !== eventToDelete.timestamp.toMillis()
+        );
+        
+        const playerUpdates = {
+            wins: increment(-delta),
+            scoreEvents: updatedPlayerScoreEvents
+        };
+        
+        if (delta > 0) {
+            const remainingWins = updatedPlayerScoreEvents.filter(e => e.delta > 0);
+            if (remainingWins.length > 0) {
+                const sortedWins = [...remainingWins].sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+                playerUpdates.lastWinAt = sortedWins[0].timestamp;
+            } else {
+                playerUpdates.lastWinAt = null;
+            }
+        }
+        
+        await updateDoc(playerRef, playerUpdates);
+        
+        showToast('Score event deleted!', 'success');
+        
+        // Refresh display
+        displayPlayerScoreEvents();
+        
+    } catch (error) {
+        console.error('Error deleting score event:', error);
+        showToast('Error deleting event: ' + error.message, 'error');
+    }
+};
 
 window.deletePlayer = async function(playerId) {
     const player = playersData[playerId];
@@ -2717,12 +2930,16 @@ async function loadRoundParticipants(roundNumber) {
             participants.push({ id: doc.id, ...doc.data() });
         });
         
-        // Get current wins and lastWinAt from players collection
+        // Get current wins and calculate round wins from scoreEvents
         for (const participant of participants) {
             if (playersData[participant.playerId]) {
                 const playerData = playersData[participant.playerId];
                 participant.currentWins = playerData.wins || 0;
-                participant.roundWins = (participant.currentWins) - (participant.wins || 0);
+                
+                // Calculate round wins from scoreEvents
+                const scoreEvents = participant.scoreEvents || [];
+                participant.roundWins = scoreEvents.reduce((sum, e) => sum + e.delta, 0);
+                
                 participant.lastWinAt = playerData.lastWinAt;
             } else {
                 participant.currentWins = participant.wins || 0;
@@ -2814,6 +3031,10 @@ async function loadRoundsHistory() {
             const isPlayoff = round.isPlayoff || false;
             const playoffBadge = isPlayoff ? '<span style="margin-left: 10px; background: #fbbf24; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">PLAYOFF</span>' : '';
             
+            const viewDetailsBtn = round.status === 'completed' 
+                ? `<button class="btn btn-small btn-primary" onclick="viewRoundDetails('${round.id}')" style="margin-right: 10px;">View Details</button>` 
+                : '';
+            
             return `
                 <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
                     <div style="flex: 1;">
@@ -2828,9 +3049,12 @@ async function loadRoundsHistory() {
                             ${round.endedAt ? `<br>Ended: ${endDate}` : ''}
                         </div>
                     </div>
-                    <button class="btn btn-small btn-secondary" onclick="restartSpecificRound(${round.roundNumber}, '${round.id}')">
-                        Restart
-                    </button>
+                    <div>
+                        ${viewDetailsBtn}
+                        <button class="btn btn-small btn-secondary" onclick="restartSpecificRound(${round.roundNumber}, '${round.id}')">
+                            Restart
+                        </button>
+                    </div>
                 </div>
             `;
         }).join('');
@@ -2924,7 +3148,7 @@ moveToNextRoundBtn.addEventListener('click', async () => {
             roundInProgress: false
         });
         
-        showToast(`✅ Moved to Round ${nextRound}!\n\nTimer: ${defaultTimer} minutes (editable in UI)\nRound is now in staging. Assign players to tables, then click "Start Round" when ready.`, "success");
+        showToast(`Moved to Round ${nextRound}!\n\nTimer: ${defaultTimer} minutes (editable in UI)\nRound is now in staging. Assign players to tables, then click "Start Round" when ready.`, "success");
         selectTournament(currentTournamentId); // Refresh
     } catch (error) {
         console.error('Error moving to next round:', error);
@@ -3063,6 +3287,7 @@ document.getElementById('confirmStartRoundBtn').addEventListener('click', async 
                 tableId: player.tableId || null,
                 position: player.position || null,
                 lastWinAt: player.lastWinAt || null,
+                scoreEvents: [], // Initialize empty scoreEvents array for new round
                 snapshotAt: serverTimestamp()
             });
         });
@@ -3074,7 +3299,7 @@ document.getElementById('confirmStartRoundBtn').addEventListener('click', async 
             roundInProgress: true
         });
         
-        showToast(`✅ Round ${currentRound} started with ${activePlayers.length} participants!`, "success");
+        showToast(`Round ${currentRound} started with ${activePlayers.length} participants!`, "success");
         window.pendingRoundStart = null;
         selectTournament(currentTournamentId); // Refresh
     } catch (error) {
@@ -3258,8 +3483,9 @@ endRoundBtn.addEventListener('click', async () => {
             
             playersToCut.forEach(p => {
                 const score = p.wins || 0;
-                const roundStart = roundParticipants[p.id]?.wins || 0;
-                const roundWins = score - roundStart;
+                const participantData = roundParticipants[p.id];
+                const scoreEvents = participantData?.scoreEvents || [];
+                const roundWins = scoreEvents.reduce((sum, e) => sum + e.delta, 0);
                 const key = `${score}-${roundWins}`; // Group by both total and round wins
                 
                 if (!scoreMap.has(key)) {
@@ -3392,9 +3618,9 @@ document.getElementById('endRoundOnlyBtn').addEventListener('click', async () =>
             
             await batch.commit();
             
-            showToast(`✅ Round ${currentRound} ended!\n\n⚠️ NO PLAYERS WERE ELIMINATED.\n\nYou can manually eliminate players or move to the next round.`, "success");
+            showToast(`Round ${currentRound} ended!\n\nNO PLAYERS WERE ELIMINATED.\n\nYou can manually eliminate players or move to the next round.`, "success");
         } else {
-            showToast(`✅ Round ${currentRound} ended!`, "success");
+            showToast(`Round ${currentRound} ended!`, "success");
         }
         
         selectTournament(currentTournamentId); // Refresh
@@ -3570,24 +3796,24 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
                         currentRound: currentRound + 1
                     });
                     
-                    showToast(`✅ Round ${currentRound} Complete!\n\n${eliminatedCount > 0 ? `• ${eliminatedCount} player(s) eliminated\n` : ''}• ${remainingPlayers} player(s) auto-assigned to ${tablesNeeded} table(s)\n• Round ${currentRound + 1} created in staging (${defaultTimer} min timer)\n\nYou can edit the timer duration in the UI, then click "Start Round ${currentRound + 1}"!`);
+                    showToast(`Round ${currentRound} Complete!\n\n${eliminatedCount > 0 ? `• ${eliminatedCount} player(s) eliminated\n` : ''}• ${remainingPlayers} player(s) auto-assigned to ${tablesNeeded} table(s)\n• Round ${currentRound + 1} created in staging (${defaultTimer} min timer)\n\nYou can edit the timer duration in the UI, then click "Start Round ${currentRound + 1}"!`);
                     selectTournament(currentTournamentId); // Refresh
         } else {
                     // Can't auto-assign - show error
-                    showToast(`⚠️ Cannot auto-assign players to tables!\n\n${eliminatedCount > 0 ? `• ${eliminatedCount} player(s) eliminated\n` : ''}• ${remainingPlayers} player(s) remaining\n\nIssues:\n${remainingPlayers % 4 !== 0 ? `• Player count (${remainingPlayers}) not divisible by 4\n` : ''}${activeTables.length < tablesNeeded ? `• Need ${tablesNeeded} tables, only ${activeTables.length} active\n` : ''}\nPlease manually set up the next round.`);
+                    showToast(`Cannot auto-assign players to tables!\n\n${eliminatedCount > 0 ? `• ${eliminatedCount} player(s) eliminated\n` : ''}• ${remainingPlayers} player(s) remaining\n\nIssues:\n${remainingPlayers % 4 !== 0 ? `• Player count (${remainingPlayers}) not divisible by 4\n` : ''}${activeTables.length < tablesNeeded ? `• Need ${tablesNeeded} tables, only ${activeTables.length} active\n` : ''}\nPlease manually set up the next round.`);
                     selectTournament(currentTournamentId);
                 }
             } else if (isLastRound && !wasPlayoffRound) {
                 // Tournament scheduled rounds complete - page will show playoff button
                 const eliminationMsg = eliminatedCount > 0 ? `\n\n✅ ${eliminatedCount} player(s) eliminated.` : '';
-                showToast(`🏆 Tournament Complete!\n\nAll ${totalRounds} scheduled rounds finished.${eliminationMsg}\n\nYou can now create an optional playoff round using the "Create Playoff Round" button.`, "info");
+                showToast(`Tournament Complete!\n\nAll ${totalRounds} scheduled rounds finished.${eliminationMsg}\n\nYou can now create an optional playoff round using the "Create Playoff Round" button.`, "info");
                 selectTournament(currentTournamentId); // Refresh to show playoff button
             } else if (wasPlayoffRound) {
                 // Playoff round ended - query fresh count from database
                 const playersSnapshot = await getDocs(collection(db, 'tournaments', currentTournamentId, 'players'));
                 const remainingPlayers = playersSnapshot.docs.filter(doc => !doc.data().eliminated).length;
                 const eliminationMsg = eliminatedCount > 0 ? `\n✅ ${eliminatedCount} player(s) eliminated.\n` : '';
-                showToast(`✅ Playoff round ended!\n${eliminationMsg}\n${remainingPlayers} player(s) remaining.\n\nYou can create another playoff round or end the tournament.`, "success");
+                showToast(`Playoff round ended!\n${eliminationMsg}\n${remainingPlayers} player(s) remaining.\n\nYou can create another playoff round or end the tournament.`, "success");
                 selectTournament(currentTournamentId); // Refresh to show playoff button
             }
         } else {
@@ -3596,15 +3822,15 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
             
             if (isLastRound && !wasPlayoffRound) {
                 // Tournament complete - page will show playoff button
-                showToast(`🏆 Tournament Complete!\n\nAll ${totalRounds} scheduled rounds finished.\n\nYou can now create an optional playoff round using the "Create Playoff Round" button.`, "info");
+                showToast(`Tournament Complete!\n\nAll ${totalRounds} scheduled rounds finished.\n\nYou can now create an optional playoff round using the "Create Playoff Round" button.`, "info");
                 selectTournament(currentTournamentId); // Refresh to show playoff button
             } else if (wasPlayoffRound) {
                 // Playoff round ended
                 const remainingPlayers = Object.values(playersData).filter(p => !p.eliminated).length;
-                showToast(`✅ Playoff round ended!\n\n${remainingPlayers} player(s) remaining.\n\nYou can create another playoff round or end the tournament.`, "success");
+                showToast(`Playoff round ended!\n\n${remainingPlayers} player(s) remaining.\n\nYou can create another playoff round or end the tournament.`, "success");
                 selectTournament(currentTournamentId); // Refresh to show playoff button
             } else {
-                showToast(`✅ Round ${currentRound} ended!\n\nClick "Move to Round ${currentRound + 1}" to set up the next round.`, "success");
+                showToast(`Round ${currentRound} ended!\n\nClick "Move to Round ${currentRound + 1}" to set up the next round.`, "success");
         selectTournament(currentTournamentId); // Refresh
             }
         }
@@ -3880,7 +4106,7 @@ document.getElementById('autoAssignTablesBtn').addEventListener('click', async (
         // Commit all player updates in one batch
         await batch.commit();
         
-        showToast(`✅ ${numTables} table(s) created and players assigned!`, "success");
+        showToast(`${numTables} table(s) created and players assigned!`, "success");
         selectTournament(currentTournamentId); // Refresh
     } catch (error) {
         console.error('Error auto-assigning tables:', error);
@@ -3897,7 +4123,7 @@ window.updateMaxPlayers = async function(newValue, oldValue) {
         await updateDoc(doc(db, 'tournaments', currentTournamentId), {
             maxPlayers: newMax
         });
-        showToast('✅ Max players updated!', 'success');
+        showToast('Max players updated!', 'success');
         selectTournament(currentTournamentId); // Refresh
     } catch (error) {
         console.error('Error updating max players:', error);
@@ -3914,7 +4140,7 @@ window.updateTotalRounds = async function(newValue, oldValue) {
         await updateDoc(doc(db, 'tournaments', currentTournamentId), {
             totalRounds: newTotal
         });
-        showToast('✅ Total rounds updated!', 'success');
+        showToast('Total rounds updated!', 'success');
         selectTournament(currentTournamentId); // Refresh
     } catch (error) {
         console.error('Error updating total rounds:', error);
@@ -3950,7 +4176,7 @@ window.updateTournamentCode = async function(newValue, oldValue) {
         await updateDoc(doc(db, 'tournaments', currentTournamentId), {
             tournamentCode: validation.code
         });
-        showToast(`✅ Tournament code updated to: ${validation.code}`, 'success');
+        showToast(`Tournament code updated to: ${validation.code}`, 'success');
         selectTournament(currentTournamentId); // Refresh
     } catch (error) {
         console.error('Error updating tournament code:', error);
@@ -4330,7 +4556,7 @@ document.getElementById('confirmBulkCreateTablesBtn').addEventListener('click', 
     }
     
     if (conflicts.length > 0) {
-        showToast(`❌ Cannot create tables:\n\nTable numbers already exist: ${conflicts.join(', ')}\n\nPlease choose a different starting number.`);
+        showToast(`Cannot create tables:\n\nTable numbers already exist: ${conflicts.join(', ')}\n\nPlease choose a different starting number.`);
         return;
     }
     
@@ -4368,7 +4594,7 @@ document.getElementById('confirmBulkCreateTablesBtn').addEventListener('click', 
         // Commit all tables in one batch
         await batch.commit();
         
-        showToast(`✅ Created ${numTables} table(s)!`, "success");
+        showToast(`Created ${numTables} table(s)!`, "success");
     } catch (error) {
         console.error('Error creating tables:', error);
         showToast('Error creating tables: ' + error.message, 'error');
@@ -4393,7 +4619,7 @@ document.getElementById('confirmAddTableToMapBtn').addEventListener('click', asy
     // Check if table number already exists
     const existing = Object.values(tablesData).find(t => t.tableNumber === tableNumber);
     if (existing) {
-        showToast(`❌ Table ${tableNumber} already exists!\n\nPlease choose a different number.`, "warning");
+        showToast(`Table ${tableNumber} already exists!\n\nPlease choose a different number.`, "warning");
         return;
     }
     
@@ -4574,3 +4800,1029 @@ document.getElementById('confirmSeatAssignmentBtn').addEventListener('click', as
         showToast('Error assigning seat: ' + error.message, 'error');
     }
 });
+
+// Round Details Modal
+document.getElementById('closeRoundDetailsBtn').addEventListener('click', () => {
+    document.getElementById('roundDetailsModal').classList.add('hidden');
+});
+
+// Toggle accordion for table details
+window.toggleAccordion = function(accordionId) {
+    const content = document.getElementById(accordionId);
+    const icon = document.getElementById(accordionId + '-icon');
+    
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.textContent = '▲';
+    } else {
+        content.style.display = 'none';
+        icon.textContent = '▼';
+    }
+};
+
+// Build time series chart for score progression
+function buildTimeSeriesChart(participants, allWinEvents, roundData) {
+    // Generate unique canvas ID for this table
+    const canvasId = `chart-${Math.random().toString(36).substr(2, 9)}`;
+    
+    const roundStartTime = roundData.startedAt ? roundData.startedAt.toDate() : null;
+    const roundEndTime = roundData.endedAt ? roundData.endedAt.toDate() : null;
+    const roundDurationMin = roundData.timerDuration || 30;
+    const roundDurationMs = roundDurationMin * 60 * 1000;
+    
+    if (!roundStartTime) {
+        return '<p style="color: #9ca3af; font-size: 13px;">Chart unavailable - round start time missing</p>';
+    }
+    
+    // Calculate effective end time (round end or round start + duration)
+    const effectiveEndTime = roundEndTime || new Date(roundStartTime.getTime() + roundDurationMs);
+    
+    // Colors for each player (cycle through these)
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+    
+    // Collect all score events for the chart
+    const allChartEvents = [];
+    participants.forEach(p => {
+        const scoreEvents = p.scoreEvents || [];
+        const winTimestamps = p.winTimestamps || [];
+        
+        if (scoreEvents.length > 0) {
+            scoreEvents.forEach(event => {
+                allChartEvents.push({
+                    participantId: p.id,
+                    timestamp: event.timestamp,
+                    delta: event.delta || 1
+                });
+            });
+        } else {
+            // Fallback to winTimestamps
+            winTimestamps.forEach(timestamp => {
+                allChartEvents.push({
+                    participantId: p.id,
+                    timestamp: timestamp,
+                    delta: 1
+                });
+            });
+        }
+    });
+    
+    // Build datasets for each player
+    const datasets = participants.map((participant, index) => {
+        const playerEvents = allChartEvents.filter(e => e.participantId === participant.id);
+        
+        // Sort by timestamp
+        playerEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+        
+        // Build data points: [time, cumulative wins]
+        const dataPoints = [];
+        
+        // Start at 0
+        dataPoints.push({ x: 0, y: 0 });
+        
+        let cumulativeWins = 0;
+        playerEvents.forEach(event => {
+            const eventTime = new Date(event.timestamp.toDate());
+            const offsetMs = eventTime - roundStartTime;
+            const offsetMin = offsetMs / 60000;
+            
+            // Cap at round end time for display (grace period scores show at end)
+            const displayOffsetMin = Math.min(offsetMin, roundDurationMin);
+            
+            cumulativeWins += event.delta; // Can be +1 or -1
+            dataPoints.push({ x: displayOffsetMin, y: cumulativeWins });
+        });
+        
+        // End at round duration with final score
+        if (dataPoints.length === 1 || dataPoints[dataPoints.length - 1].x < roundDurationMin) {
+            dataPoints.push({ x: roundDurationMin, y: cumulativeWins });
+        }
+        
+        const color = colors[index % colors.length];
+        const positionShort = participant.position?.charAt(0) || '?';
+        
+        return {
+            label: `${participant.name} (${positionShort})`,
+            data: dataPoints,
+            borderColor: color,
+            backgroundColor: color + '20',
+            borderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            stepped: false,
+            tension: 0
+        };
+    });
+    
+    // Create canvas and initialize chart after DOM insertion
+    setTimeout(() => {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'linear',
+                        title: {
+                            display: true,
+                            text: 'Time (minutes from round start)'
+                        },
+                        min: 0,
+                        max: roundDurationMin,
+                        ticks: {
+                            stepSize: roundDurationMin <= 10 ? 1 : 5
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        title: {
+                            display: true,
+                            text: 'Cumulative Wins'
+                        },
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y} wins at +${context.parsed.x.toFixed(1)}min`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }, 100);
+    
+    return `<canvas id="${canvasId}" style="max-height: 300px;"></canvas>`;
+}
+
+// View Round Details Function (called from rounds history)
+window.viewRoundDetails = async function(roundId) {
+    if (!currentTournamentId) return;
+    
+    try {
+        // Fetch round document
+        const roundDoc = await getDoc(doc(db, 'tournaments', currentTournamentId, 'rounds', roundId));
+        if (!roundDoc.exists()) {
+            showToast('Round not found!', 'error');
+            return;
+        }
+        
+        const roundData = roundDoc.data();
+        const roundNumber = roundData.roundNumber;
+        const startDate = roundData.startedAt ? new Date(roundData.startedAt.toDate()).toLocaleString() : 'N/A';
+        const endDate = roundData.endedAt ? new Date(roundData.endedAt.toDate()).toLocaleString() : 'N/A';
+        const timerText = roundData.timerDuration ? `${roundData.timerDuration} minutes` : 'N/A';
+        const isPlayoff = roundData.isPlayoff || false;
+        const playoffBadge = isPlayoff ? '<span style="margin-left: 10px; background: #fbbf24; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">PLAYOFF</span>' : '';
+        
+        // Update modal title and info
+        document.getElementById('roundDetailsTitle').innerHTML = `Round ${roundNumber} Details ${playoffBadge}`;
+        document.getElementById('roundDetailsInfo').innerHTML = `
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+                <div><strong>Timer Duration:</strong> ${timerText}</div>
+                <div><strong>Started:</strong> ${startDate}</div>
+                <div><strong>Ended:</strong> ${endDate}</div>
+            </div>
+        `;
+        
+        // Fetch all participants for this round
+        const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants'));
+        
+        if (participantsSnap.empty) {
+            document.getElementById('roundDetailsTables').innerHTML = '<p style="color: #6b7280; text-align: center; padding: 20px;">No participant data found for this round.</p>';
+            document.getElementById('roundDetailsModal').classList.remove('hidden');
+            return;
+        }
+        
+        // Group participants by table
+        const tableGroups = {};
+        participantsSnap.forEach(doc => {
+            const participant = { id: doc.id, ...doc.data() };
+            const tableId = participant.tableId || 'unassigned';
+            
+            if (!tableGroups[tableId]) {
+                tableGroups[tableId] = [];
+            }
+            tableGroups[tableId].push(participant);
+        });
+        
+        // Get table data to display table numbers
+        const tablesSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'tables'));
+        const tablesMap = {};
+        tablesSnap.forEach(doc => {
+            tablesMap[doc.id] = { id: doc.id, ...doc.data() };
+        });
+        
+        // Render tables
+        let tablesHTML = '';
+        
+        // Sort tables by table number
+        const sortedTableIds = Object.keys(tableGroups).sort((a, b) => {
+            if (a === 'unassigned') return 1;
+            if (b === 'unassigned') return -1;
+            const tableA = tablesMap[a]?.tableNumber || 999;
+            const tableB = tablesMap[b]?.tableNumber || 999;
+            return tableA - tableB;
+        });
+        
+        for (const tableId of sortedTableIds) {
+            const participants = tableGroups[tableId];
+            const table = tablesMap[tableId];
+            const tableNumber = table?.tableNumber || '?';
+            
+            // Calculate net score for this table
+            const tableNetScore = participants.reduce((total, p) => {
+                const scoreEvents = p.scoreEvents || [];
+                const participantScore = scoreEvents.reduce((sum, e) => sum + e.delta, 0);
+                return total + participantScore;
+            }, 0);
+            
+            const scoreDisplay = tableNetScore >= 0 ? `(+${tableNetScore})` : `(${tableNetScore})`;
+            const tableName = tableId === 'unassigned' 
+                ? 'Unassigned Players' 
+                : `Table ${tableNumber} ${scoreDisplay}`;
+            
+            // Sort participants by position
+            const positionOrder = { 'East': 0, 'South': 1, 'West': 2, 'North': 3 };
+            participants.sort((a, b) => {
+                const orderA = positionOrder[a.position] ?? 999;
+                const orderB = positionOrder[b.position] ?? 999;
+                return orderA - orderB;
+            });
+            
+            // Build player list
+            let playersListHTML = participants.map(p => {
+                const position = p.position || 'N/A';
+                const positionShort = position.charAt(0); // E, S, W, N
+                const winsAtRoundStart = p.wins || 0;
+                const scoreEvents = p.scoreEvents || [];
+                const roundWins = scoreEvents.reduce((sum, e) => sum + e.delta, 0);
+                
+                return `
+                    <div style="display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #e5e7eb;">
+                        <div style="flex: 1;">
+                            <strong>${positionShort}:</strong> ${p.name}
+                        </div>
+                        <div style="color: #6b7280; font-size: 13px;">
+                            Tourney Wins: ${winsAtRoundStart} | Round Wins: ${roundWins}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            // Build scoring timeline (all score events from all players at this table, chronologically)
+            let allWinEvents = [];
+            participants.forEach(p => {
+                const scoreEvents = p.scoreEvents || [];
+                const winTimestamps = p.winTimestamps || [];
+                
+                // If scoreEvents exist, use those (includes +1 and -1)
+                if (scoreEvents.length > 0) {
+                    scoreEvents.forEach((event, index) => {
+                        allWinEvents.push({
+                            player: p,
+                            timestamp: event.timestamp,
+                            delta: event.delta || 1, // Default to +1 for old data
+                            participantId: p.id,
+                            eventIndex: index,
+                            isScoreEvent: true
+                        });
+                    });
+                } else {
+                    // Fallback to winTimestamps for backwards compatibility
+                    winTimestamps.forEach((timestamp, index) => {
+                        allWinEvents.push({
+                            player: p,
+                            timestamp: timestamp,
+                            delta: 1,
+                            participantId: p,
+                            winIndex: index,
+                            isScoreEvent: false
+                        });
+                    });
+                }
+            });
+            
+            // Sort events chronologically
+            allWinEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            
+            // Track running totals for each player
+            const runningTotals = {};
+            participants.forEach(p => {
+                runningTotals[p.id] = 0;
+            });
+            
+            let timelineHTML = '';
+            let batchScoringCount = 0;
+            
+            if (allWinEvents.length === 0) {
+                timelineHTML = '<p style="color: #9ca3af; font-size: 13px; padding: 10px; text-align: center;">No score events recorded at this table.</p>';
+            } else {
+                const roundStartTime = roundData.startedAt ? roundData.startedAt.toDate() : null;
+                
+                timelineHTML = allWinEvents.map((event, index) => {
+                    const eventDate = new Date(event.timestamp.toDate());
+                    const clockTime = eventDate.toLocaleTimeString();
+                    
+                    // Calculate offset from round start
+                    let offsetStr = '';
+                    if (roundStartTime) {
+                        const offsetMs = eventDate - roundStartTime;
+                        const offsetMin = Math.floor(offsetMs / 60000);
+                        const offsetSec = Math.floor((offsetMs % 60000) / 1000);
+                        offsetStr = `+${offsetMin}m ${offsetSec}s`;
+                    }
+                    
+                    // Check if this score event is within 30 seconds of the previous event (batch scoring warning)
+                    let batchWarning = '';
+                    if (index > 0) {
+                        const prevEventDate = new Date(allWinEvents[index - 1].timestamp.toDate());
+                        const timeDiffMs = eventDate - prevEventDate;
+                        const timeDiffSec = timeDiffMs / 1000;
+                        
+                        if (timeDiffSec <= 30) {
+                            batchScoringCount++;
+                            batchWarning = `<span style="color: #f59e0b; font-weight: bold; margin-left: 8px;" title="Warning: Recorded within ${timeDiffSec.toFixed(1)}s of previous score event - possible batch scoring">⚠️ ${timeDiffSec.toFixed(1)}s</span>`;
+                        }
+                    }
+                    
+                    const positionShort = event.player.position?.charAt(0) || '?';
+                    const delta = event.delta || 1;
+                    
+                    // Update running total for this player
+                    runningTotals[event.participantId] += delta;
+                    const runningCount = runningTotals[event.participantId];
+                    
+                    // Style based on delta
+                    const deltaColor = delta > 0 ? '#10b981' : '#ef4444';
+                    const deltaText = delta > 0 ? '+1' : '-1';
+                    
+                    return `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #f3f4f6;">
+                            <div style="flex: 1; font-size: 13px;">
+                                <span style="color: #667eea; font-weight: 600;">${offsetStr}</span>
+                                <span style="color: #9ca3af; font-size: 11px;">(${clockTime})</span> - 
+                                <strong>${event.player.name}</strong> (${positionShort}) 
+                                <span style="color: ${deltaColor}; font-weight: bold;">${deltaText}</span>
+                                <span style="color: #9ca3af; font-size: 12px;">(Total: ${runningCount})</span>
+                                ${batchWarning}
+                            </div>
+                            <div style="display: flex; gap: 5px;">
+                                <button class="btn btn-small btn-secondary" onclick="editWinTimestamp('${roundId}', '${event.participantId}', ${event.winIndex || event.eventIndex})" style="padding: 4px 8px; font-size: 11px;">Edit</button>
+                                <button class="btn btn-small btn-secondary" onclick="deleteWinTimestamp('${roundId}', '${event.participantId}', ${event.winIndex || event.eventIndex})" style="padding: 4px 8px; font-size: 11px; background: #ef4444;">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            // Calculate total wins for this table
+            const totalWins = allWinEvents.filter(e => e.delta > 0).length;
+            
+            // Create zero wins warning banner if applicable
+            const zeroWinsWarningBanner = totalWins === 0
+                ? `<div style="background: #fee2e2; border: 1px solid #ef4444; border-radius: 6px; padding: 10px; margin-bottom: 15px;">
+                       <strong style="color: #7f1d1d;">⚠️ No Wins Recorded</strong>
+                       <p style="margin: 5px 0 0 0; font-size: 13px; color: #7f1d1d;">
+                           This table has 0 wins recorded for the entire round. Verify players scored correctly.
+                       </p>
+                   </div>`
+                : '';
+            
+            // Create batch scoring warning banner if applicable
+            const batchWarningBanner = batchScoringCount > 0 
+                ? `<div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 10px; margin-bottom: 15px;">
+                       <strong style="color: #92400e;">⚠️ Batch Scoring Detected</strong>
+                       <p style="margin: 5px 0 0 0; font-size: 13px; color: #78350f;">
+                           ${batchScoringCount} scoring update(s) recorded within 30 seconds of each other. Players should score in real-time, not batched.
+                       </p>
+                   </div>`
+                : '';
+            
+            // Build time series chart
+            const chartHTML = buildTimeSeriesChart(participants, allWinEvents, roundData);
+            
+            // Unique ID for collapsible content
+            const accordionId = `table-accordion-${tableId}`;
+            const warningEmoji = (batchScoringCount > 0 || totalWins === 0) ? ' ⚠️' : '';
+            
+            tablesHTML += `
+                <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 15px; overflow: hidden;">
+                    <div onclick="toggleAccordion('${accordionId}')" style="padding: 15px; cursor: pointer; background: #f9fafb; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                        <h3 style="font-size: 16px; color: #374151; margin: 0;">${tableName}${warningEmoji}</h3>
+                        <span id="${accordionId}-icon" style="font-size: 18px; color: #6b7280;">▼</span>
+                    </div>
+                    
+                    <div id="${accordionId}" style="display: none; padding: 15px;">
+                        ${zeroWinsWarningBanner}
+                        ${batchWarningBanner}
+                        
+                        <div style="margin-bottom: 15px;">
+                            ${playersListHTML}
+                        </div>
+                        
+                        <div style="border-top: 2px solid #e5e7eb; padding-top: 15px; margin-bottom: 15px;">
+                            <h4 style="font-size: 14px; color: #6b7280; margin-bottom: 10px;">📈 Score Progression</h4>
+                            ${chartHTML}
+                        </div>
+                        
+                        <div style="border-top: 2px solid #e5e7eb; padding-top: 10px;">
+                            <h4 style="font-size: 14px; color: #6b7280; margin-bottom: 10px;">
+                                🕐 Scoring Timeline
+                                <button class="btn btn-small btn-primary" onclick="addWinToTable('${roundId}', '${tableId}')" style="margin-left: 10px; padding: 4px 8px; font-size: 11px;">+/− Add Score Event</button>
+                                <button class="btn btn-small btn-secondary" onclick="redistributeTableScores('${roundId}', '${tableId}')" style="margin-left: 5px; padding: 4px 8px; font-size: 11px; background: #667eea;">⏱️ Redistribute Events</button>
+                            </h4>
+                            ${timelineHTML}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        document.getElementById('roundDetailsTables').innerHTML = tablesHTML;
+        document.getElementById('roundDetailsModal').classList.remove('hidden');
+        
+    } catch (error) {
+        console.error('Error loading round details:', error);
+        showToast('Error loading round details: ' + error.message, 'error');
+    }
+};
+
+// Edit Win Timestamp
+window.editWinTimestamp = async function(roundId, participantId, winIndex) {
+    if (!currentTournamentId) return;
+    
+    try {
+        // Get round data to get start time
+        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
+        const roundDoc = await getDoc(roundRef);
+        
+        if (!roundDoc.exists()) {
+            showToast('Round not found!', 'error');
+            return;
+        }
+        
+        const roundData = roundDoc.data();
+        const roundStartTime = roundData.startedAt ? roundData.startedAt.toDate() : null;
+        
+        if (!roundStartTime) {
+            showToast('Round has not started yet!', 'error');
+            return;
+        }
+        
+        // Get participant data
+        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
+        const participantDoc = await getDoc(participantRef);
+        
+        if (!participantDoc.exists()) {
+            showToast('Participant not found!', 'error');
+            return;
+        }
+        
+        const participantData = participantDoc.data();
+        const scoreEvents = participantData.scoreEvents || [];
+        
+        if (scoreEvents.length === 0) {
+            showToast('No score events found! This may be old data format.', 'error');
+            return;
+        }
+        
+        if (winIndex >= scoreEvents.length) {
+            showToast('Score event not found!', 'error');
+            return;
+        }
+        
+        const currentEvent = scoreEvents[winIndex];
+        const currentTimestamp = currentEvent.timestamp;
+        const currentDate = new Date(currentTimestamp.toDate());
+        
+        // Calculate current offset from round start
+        const currentOffsetMs = currentDate - roundStartTime;
+        const currentOffsetMin = Math.floor(currentOffsetMs / 60000);
+        const currentOffsetSec = Math.floor((currentOffsetMs % 60000) / 1000);
+        
+        // Get round timer duration for validation
+        const roundDurationMin = roundData.timerDuration || 30;
+        
+        // Prompt for new offset
+        const newOffsetStr = prompt(
+            `Edit score event timestamp for ${participantData.name}:\n\n` +
+            `Current: +${currentOffsetMin}m ${currentOffsetSec}s from round start\n` +
+            `(${currentDate.toLocaleTimeString()})\n\n` +
+            `Round duration: ${roundDurationMin} minutes\n\n` +
+            `Enter new time offset (minutes from round start, max ${roundDurationMin}):\n` +
+            `Examples: "5" = 5 minutes, "5.5" = 5min 30sec, "12.75" = 12min 45sec`,
+            `${currentOffsetMin}.${Math.round(currentOffsetSec / 60 * 100)}`
+        );
+        
+        if (!newOffsetStr) return; // User cancelled
+        
+        // Parse offset
+        const offsetMinutes = parseFloat(newOffsetStr);
+        if (isNaN(offsetMinutes) || offsetMinutes < 0) {
+            showToast('Invalid offset! Enter a positive number of minutes.', 'error');
+            return;
+        }
+        
+        // Validate against round duration
+        if (offsetMinutes > roundDurationMin) {
+            showToast(`Invalid offset! Cannot exceed round duration of ${roundDurationMin} minutes.`, 'error');
+            return;
+        }
+        
+        // Calculate new timestamp
+        const offsetMs = offsetMinutes * 60000;
+        const newDate = new Date(roundStartTime.getTime() + offsetMs);
+        const newTimestamp = Timestamp.fromDate(newDate);
+        
+        // Update participant's scoreEvents array
+        const updatedScoreEvents = [...scoreEvents];
+        updatedScoreEvents[winIndex] = {
+            ...currentEvent,
+            timestamp: newTimestamp
+        };
+        
+        await updateDoc(participantRef, {
+            scoreEvents: updatedScoreEvents
+        });
+        
+        // Also update player document's scoreEvents
+        const playerId = participantData.playerId;
+        const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
+        const playerDoc = await getDoc(playerRef);
+        
+        if (playerDoc.exists()) {
+            const playerData = playerDoc.data();
+            const playerScoreEvents = playerData.scoreEvents || [];
+            
+            if (playerScoreEvents.length > 0) {
+                // Find and replace the matching event in player's array
+                const playerUpdatedScoreEvents = playerScoreEvents.map(event => {
+                    if (event.timestamp.toMillis() === currentTimestamp.toMillis()) {
+                        return { ...event, timestamp: newTimestamp };
+                    }
+                    return event;
+                });
+                
+                await updateDoc(playerRef, {
+                    scoreEvents: playerUpdatedScoreEvents
+                });
+            }
+        }
+        
+        showToast('Score event timestamp updated!', 'success');
+        
+        // Refresh the modal
+        viewRoundDetails(roundId);
+        
+    } catch (error) {
+        console.error('Error editing score event timestamp:', error);
+        showToast('Error editing timestamp: ' + error.message, 'error');
+    }
+};
+
+// Delete Win Timestamp (or Score Event)
+window.deleteWinTimestamp = async function(roundId, participantId, eventIndex) {
+    if (!currentTournamentId) return;
+    
+    try {
+        // Get participant data
+        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
+        const participantDoc = await getDoc(participantRef);
+        
+        if (!participantDoc.exists()) {
+            showToast('Participant not found!', 'error');
+            return;
+        }
+        
+        const participantData = participantDoc.data();
+        const scoreEvents = participantData.scoreEvents || [];
+        
+        if (scoreEvents.length === 0) {
+            showToast('No score events found! This may be old data format.', 'error');
+            return;
+        }
+        
+        if (eventIndex >= scoreEvents.length) {
+            showToast('Score event not found!', 'error');
+            return;
+        }
+        
+        const eventToDelete = scoreEvents[eventIndex];
+        const dateStr = new Date(eventToDelete.timestamp.toDate()).toLocaleString();
+        const delta = eventToDelete.delta || 1;
+        
+        const deltaText = delta > 0 ? '+1' : delta < 0 ? '-1' : '0';
+        
+        // Confirm deletion
+        if (!confirm(`Delete ${deltaText} score event for ${participantData.name}?\n\nTimestamp: ${dateStr}\n\nThis will:\n- Remove event from round history\n- Adjust player's total wins by ${-delta}\n- Cannot be undone`)) {
+            return;
+        }
+        
+        // Update participant document
+        const updatedScoreEvents = scoreEvents.filter((_, index) => index !== eventIndex);
+        
+        const participantUpdates = {
+            wins: increment(-delta), // Reverse the delta
+            scoreEvents: updatedScoreEvents
+        };
+        
+        // Update lastWinAt if we're deleting a +1 win
+        if (delta > 0) {
+            // Find the most recent +1 event after deletion
+            const remainingWins = updatedScoreEvents.filter(e => e.delta > 0);
+            if (remainingWins.length > 0) {
+                const sortedWins = [...remainingWins].sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+                participantUpdates.lastWinAt = sortedWins[0].timestamp;
+            } else {
+                participantUpdates.lastWinAt = null;
+            }
+        }
+        
+        await updateDoc(participantRef, participantUpdates);
+        
+        // Also update player document
+        const playerId = participantData.playerId;
+        const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
+        const playerDoc = await getDoc(playerRef);
+        
+        if (playerDoc.exists()) {
+            const playerData = playerDoc.data();
+            const playerScoreEvents = playerData.scoreEvents || [];
+            
+            if (playerScoreEvents.length === 0) {
+                // No scoreEvents on player - old data, just decrement wins
+                await updateDoc(playerRef, { wins: increment(-delta) });
+            } else {
+                // Remove matching scoreEvent from player's array
+                const updatedPlayerScoreEvents = playerScoreEvents.filter(event => 
+                    event.timestamp.toMillis() !== eventToDelete.timestamp.toMillis()
+                );
+                
+                const playerUpdates = {
+                    wins: increment(-delta),
+                    scoreEvents: updatedPlayerScoreEvents
+                };
+                
+                // Update lastWinAt if we're deleting a +1 win
+                if (delta > 0) {
+                    const remainingWins = updatedPlayerScoreEvents.filter(e => e.delta > 0);
+                    if (remainingWins.length > 0) {
+                        const sortedWins = [...remainingWins].sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+                        playerUpdates.lastWinAt = sortedWins[0].timestamp;
+                    } else {
+                        playerUpdates.lastWinAt = null;
+                    }
+                }
+                
+                await updateDoc(playerRef, playerUpdates);
+            }
+        }
+        
+        showToast('Score event deleted successfully!', 'success');
+        
+        // Refresh the modal
+        viewRoundDetails(roundId);
+        
+    } catch (error) {
+        console.error('Error deleting score event:', error);
+        showToast('Error deleting score event: ' + error.message, 'error');
+    }
+};
+
+// Add Win to Table
+window.addWinToTable = async function(roundId, tableId) {
+    if (!currentTournamentId) return;
+    
+    try {
+        // Get round data to get start time
+        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
+        const roundDoc = await getDoc(roundRef);
+        
+        if (!roundDoc.exists()) {
+            showToast('Round not found!', 'error');
+            return;
+        }
+        
+        const roundData = roundDoc.data();
+        const roundStartTime = roundData.startedAt ? roundData.startedAt.toDate() : null;
+        
+        if (!roundStartTime) {
+            showToast('Round has not started yet!', 'error');
+            return;
+        }
+        
+        // Get all participants at this table
+        const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants'));
+        
+        const playersAtTable = [];
+        participantsSnap.forEach(doc => {
+            const participant = { id: doc.id, ...doc.data() };
+            if (participant.tableId === tableId) {
+                playersAtTable.push(participant);
+            }
+        });
+        
+        if (playersAtTable.length === 0) {
+            showToast('No players found at this table!', 'error');
+            return;
+        }
+        
+        // Sort by position
+        const positionOrder = { 'East': 0, 'South': 1, 'West': 2, 'North': 3 };
+        playersAtTable.sort((a, b) => {
+            const orderA = positionOrder[a.position] ?? 999;
+            const orderB = positionOrder[b.position] ?? 999;
+            return orderA - orderB;
+        });
+        
+        // Prompt user to select player
+        let message = 'Select player to adjust score:\n\n';
+        playersAtTable.forEach((p, index) => {
+            const positionShort = p.position?.charAt(0) || '?';
+            message += `${index + 1}. ${p.name} (${positionShort})\n`;
+        });
+        message += '\nEnter number (1-' + playersAtTable.length + '):';
+        
+        const selection = prompt(message);
+        if (!selection) return; // User cancelled
+        
+        const selectedIndex = parseInt(selection) - 1;
+        if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= playersAtTable.length) {
+            showToast('Invalid selection!', 'error');
+            return;
+        }
+        
+        const selectedParticipant = playersAtTable[selectedIndex];
+        
+        // Prompt for score delta (+1 or -1)
+        const deltaStr = prompt(
+            `Adjust score for ${selectedParticipant.name}\n\n` +
+            `Enter +1 to add a win or -1 to subtract a win:`,
+            '+1'
+        );
+        
+        if (!deltaStr) return; // User cancelled
+        
+        const delta = parseInt(deltaStr);
+        if (delta !== 1 && delta !== -1) {
+            showToast('Invalid input! Enter +1 or -1 only.', 'error');
+            return;
+        }
+        
+        // Get round timer duration for validation
+        const roundDurationMin = roundData.timerDuration || 30;
+        
+        // Prompt for offset from round start
+        const now = new Date();
+        const currentOffsetMs = now - roundStartTime;
+        const currentOffsetMin = Math.max(0, Math.min(currentOffsetMs / 60000, roundDurationMin));
+        
+        const promptAction = delta > 0 ? 'add win' : 'subtract win';
+        
+        const offsetStr = prompt(
+            `${promptAction.charAt(0).toUpperCase() + promptAction.slice(1)} for ${selectedParticipant.name}\n\n` +
+            `Round started at: ${roundStartTime.toLocaleTimeString()}\n` +
+            `Round duration: ${roundDurationMin} minutes\n\n` +
+            `Enter time offset (minutes from round start, max ${roundDurationMin}):\n` +
+            `Examples: "5" = 5 minutes, "5.5" = 5min 30sec, "12.75" = 12min 45sec`,
+            currentOffsetMin.toFixed(1)
+        );
+        
+        if (!offsetStr) return; // User cancelled
+        
+        // Parse offset
+        const offsetMinutes = parseFloat(offsetStr);
+        if (isNaN(offsetMinutes) || offsetMinutes < 0) {
+            showToast('Invalid offset! Enter a positive number of minutes.', 'error');
+            return;
+        }
+        
+        // Validate against round duration
+        if (offsetMinutes > roundDurationMin) {
+            showToast(`Invalid offset! Cannot exceed round duration of ${roundDurationMin} minutes.`, 'error');
+            return;
+        }
+        
+        // Calculate timestamp
+        const offsetMs = offsetMinutes * 60000;
+        const newDate = new Date(roundStartTime.getTime() + offsetMs);
+        const newTimestamp = Timestamp.fromDate(newDate);
+        
+        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', selectedParticipant.id);
+        const playerId = selectedParticipant.playerId;
+        const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
+        
+        // Create score event object for audit trail
+        const scoreEvent = {
+            timestamp: newTimestamp,
+            delta: delta,
+            addedAt: Timestamp.now() // When admin made this adjustment
+        };
+        
+        // Update participant document
+        const participantUpdates = {
+            wins: increment(delta),
+            scoreEvents: arrayUnion(scoreEvent)
+        };
+        
+        // Update lastWinAt for +1 wins
+        if (delta > 0) {
+            participantUpdates.lastWinAt = newTimestamp;
+        }
+        
+        await updateDoc(participantRef, participantUpdates);
+        
+        // Update player document
+        const playerUpdates = {
+            wins: increment(delta),
+            scoreEvents: arrayUnion(scoreEvent)
+        };
+        
+        if (delta > 0) {
+            playerUpdates.lastWinAt = newTimestamp;
+        }
+        
+        await updateDoc(playerRef, playerUpdates);
+        
+        const actionText = delta > 0 ? 'added to' : 'subtracted from';
+        showToast(`Score event ${actionText} ${selectedParticipant.name}!`, 'success');
+        
+        // Refresh the modal
+        viewRoundDetails(roundId);
+        
+    } catch (error) {
+        console.error('Error adding score event:', error);
+        showToast('Error adding score event: ' + error.message, 'error');
+    }
+};
+
+// Redistribute Table Scores - evenly space all scoreEvents from t=0 to round end
+window.redistributeTableScores = async function(roundId, tableId) {
+    if (!currentTournamentId) return;
+    
+    try {
+        // Get round data
+        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
+        const roundDoc = await getDoc(roundRef);
+        
+        if (!roundDoc.exists()) {
+            showToast('Round not found!', 'error');
+            return;
+        }
+        
+        const roundData = roundDoc.data();
+        const roundStartTime = roundData.startedAt ? roundData.startedAt.toDate() : null;
+        const roundDurationMin = roundData.timerDuration || 30;
+        
+        if (!roundStartTime) {
+            showToast('Round has not started yet!', 'error');
+            return;
+        }
+        
+        // Get all participants at this table
+        const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants'));
+        
+        const playersAtTable = [];
+        participantsSnap.forEach(doc => {
+            const participant = { id: doc.id, ...doc.data() };
+            if (participant.tableId === tableId) {
+                playersAtTable.push(participant);
+            }
+        });
+        
+        if (playersAtTable.length === 0) {
+            showToast('No players found at this table!', 'error');
+            return;
+        }
+        
+        // Collect all scoreEvents from all players at this table
+        let allScoreEvents = [];
+        playersAtTable.forEach(participant => {
+            const scoreEvents = participant.scoreEvents || [];
+            scoreEvents.forEach(event => {
+                allScoreEvents.push({
+                    participantId: participant.id,
+                    playerId: participant.playerId,
+                    playerName: participant.name,
+                    originalTimestamp: event.timestamp,
+                    delta: event.delta || 1,
+                    addedAt: event.addedAt
+                });
+            });
+        });
+        
+        if (allScoreEvents.length === 0) {
+            showToast('No score events to redistribute at this table.', 'warning');
+            return;
+        }
+        
+        // Sort events by original timestamp to preserve order
+        allScoreEvents.sort((a, b) => a.originalTimestamp.toMillis() - b.originalTimestamp.toMillis());
+        
+        // Confirm with admin
+        const tableName = `Table ${tablesData[tableId]?.tableNumber || '?'}`;
+        if (!confirm(
+            `Redistribute ${allScoreEvents.length} score event(s) at ${tableName}?\n\n` +
+            `This will evenly space all events from t=0 to t=${roundDurationMin} minutes.\n\n` +
+            `Current order will be preserved.\n\n` +
+            `This action cannot be undone!`
+        )) {
+            return;
+        }
+        
+        // Calculate even spacing
+        const totalEvents = allScoreEvents.length;
+        const roundDurationMs = roundDurationMin * 60000;
+        const spacing = roundDurationMs / (totalEvents + 1); // +1 to avoid placing event exactly at end
+        
+        // Create new timestamps for each event
+        const now = Timestamp.now();
+        allScoreEvents.forEach((event, index) => {
+            const offsetMs = spacing * (index + 1);
+            const newDate = new Date(roundStartTime.getTime() + offsetMs);
+            event.newTimestamp = Timestamp.fromDate(newDate);
+        });
+        
+        // Group events by participant for efficient updates
+        const eventsByParticipant = {};
+        allScoreEvents.forEach(event => {
+            if (!eventsByParticipant[event.participantId]) {
+                eventsByParticipant[event.participantId] = [];
+            }
+            eventsByParticipant[event.participantId].push(event);
+        });
+        
+        // Update each participant and their corresponding player
+        for (const participantId in eventsByParticipant) {
+            const events = eventsByParticipant[participantId];
+            const playerId = events[0].playerId;
+            
+            // Build new scoreEvents array for participant
+            const newParticipantScoreEvents = events.map(e => ({
+                timestamp: e.newTimestamp,
+                delta: e.delta,
+                addedAt: now // Mark as redistributed
+            }));
+            
+            // Update participant
+            const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
+            await updateDoc(participantRef, {
+                scoreEvents: newParticipantScoreEvents,
+                lastWinAt: newParticipantScoreEvents.filter(e => e.delta > 0).length > 0 
+                    ? newParticipantScoreEvents.filter(e => e.delta > 0).sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis())[0].timestamp 
+                    : null
+            });
+            
+            // For player: remove old events from this participant, add new ones
+            const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
+            const playerDoc = await getDoc(playerRef);
+            const playerData = playerDoc.data();
+            const oldPlayerScoreEvents = playerData.scoreEvents || [];
+            
+            // Remove old events by matching timestamps
+            const oldTimestamps = new Set(events.map(e => e.originalTimestamp.toMillis()));
+            const filteredPlayerScoreEvents = oldPlayerScoreEvents.filter(e => 
+                !oldTimestamps.has(e.timestamp.toMillis())
+            );
+            
+            // Add new events
+            const updatedPlayerScoreEvents = [...filteredPlayerScoreEvents, ...newParticipantScoreEvents];
+            
+            // Calculate new lastWinAt for player
+            const playerWins = updatedPlayerScoreEvents.filter(e => e.delta > 0);
+            const playerLastWin = playerWins.length > 0 
+                ? playerWins.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis())[0].timestamp 
+                : null;
+            
+            await updateDoc(playerRef, {
+                scoreEvents: updatedPlayerScoreEvents,
+                lastWinAt: playerLastWin
+            });
+        }
+        
+        showToast(`✅ Redistributed ${allScoreEvents.length} score event(s) at ${tableName}!`, 'success');
+        
+        // Refresh the round details view
+        viewRoundDetails(roundId);
+        
+    } catch (error) {
+        console.error('Error redistributing scores:', error);
+        showToast('Error redistributing scores: ' + error.message, 'error');
+    }
+};

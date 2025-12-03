@@ -518,15 +518,25 @@ window.adjustScore = async function(playerId, delta) {
     }
     
     try {
-        const { serverTimestamp, getDocs, collection, query, where } = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js");
+        const { serverTimestamp, arrayUnion, Timestamp, getDocs, collection, query, where } = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js");
         
         const playerRef = doc(db, 'tournaments', tournamentId, 'players', playerId);
         
-        const updates = {
-            wins: increment(delta)
+        const now = Timestamp.now(); // Client timestamp
+        
+        // Create score event for audit trail (both +1 and -1)
+        const scoreEvent = {
+            timestamp: now,
+            delta: delta,
+            addedAt: now // Player-side adjustments are immediate
         };
         
-        // If adding a win, update lastWinAt timestamp for tie-breaking
+        const updates = {
+            wins: increment(delta),
+            scoreEvents: arrayUnion(scoreEvent)
+        };
+        
+        // Update lastWinAt for +1 wins
         if (delta > 0) {
             updates.lastWinAt = serverTimestamp();
         }
@@ -556,18 +566,31 @@ window.adjustScore = async function(playerId, delta) {
                     // Find and update this player's participant record
                     const participantsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds', currentRoundId, 'participants'));
                     
-                    participantsSnap.forEach(async (participantDoc) => {
+                    for (const participantDoc of participantsSnap.docs) {
                         const participantData = participantDoc.data();
                         if (participantData.playerId === playerId) {
-                            const participantUpdates = {
-                                wins: increment(delta)
+                            const now = Timestamp.now(); // Client timestamp
+                            
+                            // Create score event for audit trail
+                            const scoreEvent = {
+                                timestamp: now,
+                                delta: delta,
+                                addedAt: now
                             };
+                            
+                            const participantUpdates = {
+                                wins: increment(delta),
+                                scoreEvents: arrayUnion(scoreEvent)
+                            };
+                            
+                            // Update lastWinAt for +1 wins
                             if (delta > 0) {
-                                participantUpdates.lastWinAt = serverTimestamp();
+                                participantUpdates.lastWinAt = now;
                             }
+                            
                             await updateDoc(participantDoc.ref, participantUpdates);
                         }
-                    });
+                    }
                 }
             }
         }
