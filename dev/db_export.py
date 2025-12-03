@@ -79,7 +79,7 @@ def export_tournament(tournament_id, output_file=None):
     # Save to file
     if output_file is None:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_file = f"dev/exports/tournament_{tournament_id}_{timestamp}.json"
+        output_file = f"exports/tournament_{tournament_id}_{timestamp}.json"
     
     import os
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -111,7 +111,7 @@ def export_all():
         print(f"Exporting: {t_data.get('name', 'Unnamed')}...")
         export_tournament(tournament.id)
     
-    print(f"\n✅ All tournaments exported to dev/exports/\n")
+    print(f"\n✅ All tournaments exported to exports/\n")
 
 if __name__ == "__main__":
     import sys
