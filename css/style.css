@@ -57,9 +57,11 @@ body {
 .mahjong-gif {
     width: 100%;
     max-width: 300px;
-    height: auto;
+    height: 240px;
     display: block;
     margin: 0 auto 0;
+    object-fit: cover;
+    object-position: center center;
 }
 
 h1 {

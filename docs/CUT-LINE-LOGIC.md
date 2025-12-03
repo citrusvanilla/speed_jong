@@ -238,7 +238,11 @@ When deciding who gets cut, players are sorted with these priorities:
 
 1. **Primary:** Total tournament wins (ascending - lowest first)
 2. **Tie-breaker 1:** Wins gained THIS ROUND (ascending - fewer round wins gets cut)
-3. **Tie-breaker 2:** Last win timestamp (ascending - oldest win gets cut, most recent stays)
+3. **Tie-breaker 2:** Total points scored (ascending - fewer points = fewer games played = cut first)
+4. **Tie-breaker 3:** Last win timestamp (ascending - oldest win gets cut, most recent stays)
+
+**Points as Tie-Breaker Rationale:**
+When players have identical wins (0 total, 0 this round), points serve as a proxy for how many games their table has played. Tables that have played more games have had more opportunities to score wins. In a tie situation, players at tables with more games played (higher points) are cut first, as they've had more chances but failed to capitalize.
 
 ### Round Participants
 Each round snapshots participants at start, preserving historical record of who played in each round.

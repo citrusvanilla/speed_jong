@@ -16,7 +16,7 @@
     <!-- Start Screen -->
     <div id="startScreen" class="screen">
         <div class="container">
-            <h1>SpeedJong Timer</h1>
+            <h1 style="white-space: nowrap;">SpeedJong Timer</h1>
             <img src="../assets/images/mahjong.gif" alt="Mahjong" class="mahjong-gif">
 
             <!-- Tournament Name (outside card) -->
@@ -77,8 +77,11 @@
                 Put phone on "Do Not Disturb" mode!
             </div>
             
-            <button id="startButton" class="start-btn">READY</button>
-            <button id="backToTablesBtn" class="start-btn back-btn hidden">← Back to Tables</button>
+            <div style="display: flex; gap: 10px; margin-top: 1rem;">
+                <button id="backToHomeBtn" class="start-btn back-btn hidden" style="flex: 1; margin: 0;">← Back</button>
+                <button id="backToTablesBtn" class="start-btn back-btn hidden" style="flex: 1; margin: 0;">← Back</button>
+                <button id="startButton" class="start-btn" style="flex: 1; margin: 0;">READY</button>
+            </div>
         </div>
     </div>
     
@@ -109,7 +112,7 @@
             <div class="players-scoring" id="playersScoring"></div>
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button id="closeScoringBtn" class="close-scoring-btn" style="flex: 1;">Back to Timer</button>
-                <button id="exitToTournamentBtn" class="close-scoring-btn" style="flex: 1; background: #667eea;">Exit to Tournament</button>
+                <button id="exitToTournamentBtn" class="close-scoring-btn" style="flex: 1; background: #667eea;">Exit</button>
             </div>
         </div>
     </div>

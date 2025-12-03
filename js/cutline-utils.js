@@ -88,6 +88,12 @@ export function calculateCutLineTarget(originalPlayerCount, currentRound, totalR
  * Sort players for cut line elimination
  * Worst performers first (will be cut first)
  * 
+ * Tie-breaking hierarchy:
+ * 1. Total tournament wins (fewer = cut first)
+ * 2. Wins gained this round (fewer = cut first)
+ * 3. Total points scored (fewer = cut first) - proxy for games played at table
+ * 4. Most recent win timestamp (older = cut first)
+ * 
  * @param {Array} players - Array of player objects
  * @param {Object} roundParticipants - Map of playerId to round start snapshot
  * @returns {Array} Sorted array (worst first)
@@ -108,7 +114,14 @@ export function sortPlayersForCutLine(players, roundParticipants = {}) {
         
         if (aRoundWins !== bRoundWins) return aRoundWins - bRoundWins;
         
-        // Tie-breaker 2: most recent win timestamp stays (oldest gets cut)
+        // Tie-breaker 2: total points (ascending - fewer points = fewer games played = cut first)
+        // Points are a proxy for total games played by the table this round
+        const aPoints = a.points || 0;
+        const bPoints = b.points || 0;
+        
+        if (aPoints !== bPoints) return aPoints - bPoints;
+        
+        // Tie-breaker 3: most recent win timestamp stays (oldest gets cut)
         const aLastWin = a.lastWinAt?.toMillis() || 0;
         const bLastWin = b.lastWinAt?.toMillis() || 0;
         return aLastWin - bLastWin; // Ascending: older timestamp = lower number = cut first
@@ -118,6 +131,12 @@ export function sortPlayersForCutLine(players, roundParticipants = {}) {
 /**
  * Sort players for leaderboard display
  * Best performers first (opposite of cut line sort)
+ * 
+ * Tie-breaking hierarchy:
+ * 1. Total tournament wins (more = ranked higher)
+ * 2. Wins gained this round (more = ranked higher)
+ * 3. Total points scored (more = ranked higher) - proxy for games played at table
+ * 4. Most recent win timestamp (newer = ranked higher)
  * 
  * @param {Array} players - Array of player objects
  * @param {Object} roundParticipants - Map of playerId to round start snapshot
@@ -139,7 +158,14 @@ export function sortPlayersForLeaderboard(players, roundParticipants = {}) {
         
         if (bRoundWins !== aRoundWins) return bRoundWins - aRoundWins;
         
-        // Tie-breaker 2: Most recent win first (descending - newest first)
+        // Tie-breaker 2: Total points (descending - more points = more games played = ranked higher)
+        // Points are a proxy for total games played by the table this round
+        const aPoints = a.points || 0;
+        const bPoints = b.points || 0;
+        
+        if (bPoints !== aPoints) return bPoints - aPoints;
+        
+        // Tie-breaker 3: Most recent win first (descending - newest first)
         const aLastWin = a.lastWinAt?.toMillis() || 0;
         const bLastWin = b.lastWinAt?.toMillis() || 0;
         return bLastWin - aLastWin; // Descending: newer timestamp = higher number = shown first

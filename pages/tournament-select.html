@@ -93,6 +93,9 @@
             border: none;
             border-radius: 10px;
             cursor: pointer;
+            white-space: nowrap;
+            text-decoration: none;
+            display: inline-block;
             transition: transform 0.2s, box-shadow 0.2s;
             line-height: 1.5;
             text-decoration: none;
@@ -159,6 +162,7 @@
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
             line-height: 1.5;
+            white-space: nowrap;
         }
 
         #joinButton:hover:not(:disabled) {
@@ -276,7 +280,7 @@
     <div class="screen">
         <div class="container">
             <div id="pageTitleContainer">
-                <div id="pageTitlePrefix" style="font-size: 0.9rem; color: #9ca3af; text-align: center; margin-bottom: 5px; line-height: 1.4;">Enter Tournament Code</div>
+                <div id="pageTitlePrefix" style="font-size: 0.9rem; color: #9ca3af; text-align: center; margin-bottom: 5px; line-height: 1.4;">Enter Code</div>
                 <h1 id="pageTitle" style="display: none;"></h1>
             </div>
             
@@ -288,8 +292,10 @@
                        autocomplete="off"
                        spellcheck="false">
                 <div id="errorMessage"></div>
-                <button id="joinButton">Join Tournament</button>
-                <a href="../index.html" id="backToHomeBtn" class="tournament-btn" style="margin-top: 15px; background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);">← Back</a>
+                <div style="display: flex; gap: 10px; width: 100%;">
+                    <a href="../index.html" id="backToHomeBtn" class="tournament-btn" style="flex: 1; margin: 0 !important; max-width: none !important; background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);">← Back</a>
+                    <button id="joinButton" style="flex: 1; margin: 0 !important; max-width: none !important;">Join</button>
+                </div>
             </div>
             
             <div id="tournamentName"></div>
@@ -305,9 +311,9 @@
             </div>
 
             <div id="tournamentActions" class="button-group" style="display: none;">
-                <a href="#" id="viewAssignmentLink" class="tournament-btn">Seat Assignments</a>
+                <a href="#" id="viewAssignmentLink" class="tournament-btn">My Seat</a>
                 <a href="#" id="leaderboardLink" class="tournament-btn">Leaderboard</a>
-                <button id="exitButton">Exit Tournament</button>
+                <button id="exitButton">Exit</button>
             </div>
 
             <div class="back-link">
@@ -394,7 +400,6 @@
             }
 
             joinButton.disabled = true;
-            joinButton.textContent = 'Joining...';
             errorMessage.textContent = '';
 
             try {
@@ -412,7 +417,6 @@
                 if (!foundTournament) {
                     errorMessage.textContent = 'Invalid tournament code';
                     joinButton.disabled = false;
-                    joinButton.textContent = 'Join Tournament';
                     return;
                 }
 
@@ -420,7 +424,6 @@
                 if (foundTournament.status !== 'active') {
                     errorMessage.textContent = 'Tournament is not active';
                     joinButton.disabled = false;
-                    joinButton.textContent = 'Join Tournament';
                     return;
                 }
 
@@ -456,7 +459,6 @@
                 console.error('Error joining tournament:', error);
                 errorMessage.textContent = 'Error: ' + error.message;
                 joinButton.disabled = false;
-                joinButton.textContent = 'Join Tournament';
             }
         });
 

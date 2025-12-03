@@ -147,6 +147,12 @@ if (isTournamentMode) {
     if (settingsHint) {
         settingsHint.innerHTML = 'Tap anywhere to reset<br>Long press to return home';
     }
+    
+    // Show back to home button in practice mode
+    const backToHomeBtn = document.getElementById('backToHomeBtn');
+    if (backToHomeBtn) {
+        backToHomeBtn.classList.remove('hidden');
+    }
 }
 
 // Setup tournament UI on start screen
@@ -1184,6 +1190,16 @@ if (backToTablesBtn) {
         e.preventDefault();
         // Navigate to tournament select page
         window.location.href = '../pages/tournament-select.html';
+    });
+}
+
+// Back to home button (practice mode)
+const backToHomeBtn = document.getElementById('backToHomeBtn');
+if (backToHomeBtn) {
+    backToHomeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Navigate to home page
+        window.location.href = '../index.html';
     });
 }
 

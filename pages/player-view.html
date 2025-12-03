@@ -220,7 +220,7 @@
         <div id="content"></div>
 
         <div class="timer-link">
-            <a href="tournament-select.html">← Back to Tournament</a>
+            <a href="tournament-select.html">← Back</a>
         </div>
     </div>
 
@@ -376,6 +376,12 @@
                 const playerData = playerDoc.data();
                 playersData[playerId] = { id: playerId, ...playerData };
                 
+                // Check if player is eliminated
+                if (playerData.eliminated) {
+                    displayEliminated(playerData);
+                    return;
+                }
+                
                 if (playerData.tableId) {
                     // Load table data
                     const tableRef = doc(db, 'tournaments', currentTournamentId, 'tables', playerData.tableId);
@@ -426,20 +432,19 @@
                         }
                     }
                     
-                    const symbol = windSymbols[pos] || '';
-                    return { name: player.name, position: pos || 'Unknown', symbol: symbol };
+                    const shorthand = pos ? pos.charAt(0) : '';
+                    return { name: player.name, position: pos || 'Unknown', symbol: shorthand };
                 });
 
             const otherPlayersHTML = otherPlayers.map(p => `
                 <div class="player-item">
                     <span>${p.name}</span>
-                    <span>${p.position}</span>
+                    <span>${p.symbol}</span>
                 </div>
             `).join('');
 
             document.getElementById('content').innerHTML = `
                 <div class="assignment-card">
-                    <div>You are assigned to:</div>
                     <div class="table-info">Table ${tableData.tableNumber}</div>
                     <div class="position-info">${position}</div>
                     
@@ -461,6 +466,18 @@
                     <div class="not-assigned-message">
                         You haven't been assigned to a table yet.<br>
                         Please wait for the tournament organizer.
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayEliminated(playerData) {
+            const roundText = playerData.eliminatedInRound ? ` Round ${playerData.eliminatedInRound}` : '';
+            document.getElementById('content').innerHTML = `
+                <div class="assignment-card not-assigned" style="background: #fee2e2; color: #991b1b; border: 2px solid #ef4444;">
+                    <div class="not-assigned-message">
+                        You were eliminated in${roundText}.<br><br>
+                        Thank you for playing!
                     </div>
                 </div>
             `;

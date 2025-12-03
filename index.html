@@ -9,6 +9,63 @@
     <link rel="icon" type="image/jpeg" href="assets/images/favicon.jpg">
     <link rel="stylesheet" href="css/style.css">
     <style>
+        .welcome-text {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.9);
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .speedjong-title {
+            font-size: 3rem;
+            margin-bottom: 0;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 768px) {
+            .speedjong-title {
+                font-size: 2.2rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .speedjong-title {
+                font-size: 1.6rem;
+            }
+            .welcome-text {
+                font-size: 0.65rem;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .speedjong-title {
+                font-size: 1.4rem;
+            }
+        }
+
+        .speedjong-title span {
+            display: inline-block;
+            animation: bounce 2s ease-in-out infinite;
+            text-shadow: 0 0 20px currentColor, 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        .speedjong-title span:nth-child(1) { color: #ff6b6b; animation-delay: 0s; }
+        .speedjong-title span:nth-child(2) { color: #ffd93d; animation-delay: 0.1s; }
+        .speedjong-title span:nth-child(3) { color: #6bcf7f; animation-delay: 0.2s; }
+        .speedjong-title span:nth-child(4) { color: #4d96ff; animation-delay: 0.3s; }
+        .speedjong-title span:nth-child(5) { color: #a78bfa; animation-delay: 0.4s; }
+        .speedjong-title span:nth-child(6) { color: #ff6b6b; animation-delay: 0.5s; }
+        .speedjong-title span:nth-child(7) { color: #ffd93d; animation-delay: 0.6s; }
+        .speedjong-title span:nth-child(8) { color: #6bcf7f; animation-delay: 0.7s; }
+        .speedjong-title span:nth-child(9) { color: #4d96ff; animation-delay: 0.8s; }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
         .mode-container {
             display: flex;
             flex-direction: column;
@@ -37,11 +94,12 @@
         }
 
         .mode-title {
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             font-weight: bold;
             margin-bottom: 15px;
             color: #333;
             line-height: 1.5;
+            white-space: nowrap;
         }
 
         .mode-description {
@@ -76,7 +134,10 @@
 <body>
     <div id="startScreen" class="screen">
         <div class="container" style="background: transparent; box-shadow: none; padding: 2rem 1rem;">
-            <h1 style="color: white; text-shadow: 0 2px 10px rgba(0,0,0,0.5);">Welcome to SpeedJong</h1>
+            <div class="welcome-text">Welcome to</div>
+            <h1 class="speedjong-title">
+                <span>S</span><span>p</span><span>e</span><span>e</span><span>d</span><span>J</span><span>o</span><span>n</span><span>g</span>
+            </h1>
 
             <div class="mode-container">
                 <button class="mode-card" onclick="window.location.href='pages/timer.html?mode=normal'">
@@ -89,7 +150,7 @@
                 <button class="mode-card" onclick="window.location.href='pages/tournament-select.html'">
                     <div class="mode-title">Tournament Mode</div>
                     <div class="mode-description">
-                        Select a tournament and track your table's scores
+                        Timer, scores, assignments
                     </div>
                 </button>
             </div>

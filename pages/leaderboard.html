@@ -311,6 +311,7 @@
             getDocs,
             onSnapshot
         } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+        import { calculateCutLineTarget, sortPlayersForCutLine, sortPlayersForLeaderboard } from "../js/cutline-utils.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDI0fUdOj9fLT92VEBQCs0rGPWm0cgIEhQ",
@@ -329,6 +330,8 @@
         let tablesData = {};
         let tournaments = [];
         let previousPositions = {}; // Track previous positions for movement indicators
+        let currentTournamentData = null; // Store full tournament data
+        let roundParticipants = {}; // Store round start snapshots for tie-breaking
 
         // Get tournament ID from URL params or localStorage
         function getTournamentId() {
@@ -434,6 +437,7 @@
         async function selectTournament(tournamentId) {
             currentTournamentId = tournamentId;
             const tournamentData = tournaments.find(t => t.id === tournamentId);
+            currentTournamentData = tournamentData;
             
             if (tournamentData) {
                 document.getElementById('tournamentName').textContent = tournamentData.name;
@@ -456,12 +460,46 @@
                     tablesData[doc.id] = { id: doc.id, ...doc.data() };
                 });
 
+                // Set up real-time listener for tournament document to get updates
+                onSnapshot(doc(db, 'tournaments', currentTournamentId), (tournamentDoc) => {
+                    if (tournamentDoc.exists()) {
+                        currentTournamentData = { id: tournamentDoc.id, ...tournamentDoc.data() };
+                        
+                        // Update round info display
+                        const currentRound = currentTournamentData.currentRound || 0;
+                        const roundInProgress = currentTournamentData.roundInProgress || false;
+                        const roundNameEl = document.getElementById('roundName');
+                        
+                        if (currentRound > 0) {
+                            roundNameEl.textContent = `Round ${currentRound}${roundInProgress ? ' (In Progress)' : ' (Completed)'}`;
+                        } else {
+                            roundNameEl.textContent = 'No rounds started';
+                        }
+                    }
+                });
+
                 // Set up real-time listener for players
                 setupPlayersListener();
             }
         }
 
         async function setupPlayersListener() {
+            // Load round participants for tie-breaking (if current round exists)
+            roundParticipants = {};
+            if (currentTournamentData && currentTournamentData.currentRound > 0) {
+                const roundId = `round_${currentTournamentData.currentRound}`;
+                try {
+                    const participantsSnap = await getDocs(
+                        collection(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants')
+                    );
+                    participantsSnap.forEach(doc => {
+                        roundParticipants[doc.data().playerId] = doc.data();
+                    });
+                } catch (error) {
+                    console.log('No round participants data yet');
+                }
+            }
+            
             // Get all current tournament players
             const playersRef = collection(db, 'tournaments', currentTournamentId, 'players');
             
@@ -524,18 +562,9 @@
             const activePlayers = players.filter(p => !p.eliminated);
             const eliminatedPlayers = players.filter(p => p.eliminated);
 
-            // Sort active players by wins (descending), then by lastWinAt (most recent first for ties)
-            activePlayers.sort((a, b) => {
-                const aWins = a.wins || 0;
-                const bWins = b.wins || 0;
-                
-                if (bWins !== aWins) return bWins - aWins;
-                
-                // Tie-breaker: most recent win first
-                const aLastWin = a.lastWinAt?.toMillis() || 0;
-                const bLastWin = b.lastWinAt?.toMillis() || 0;
-                return bLastWin - aLastWin;
-            });
+            // Sort active players using the SAME algorithm as cut line (but best-first)
+            // This ensures consistent tie-breaking with the cut line logic
+            const sortedActivePlayers = sortPlayersForLeaderboard(activePlayers, roundParticipants);
             
             // Sort eliminated players by elimination round, then by wins
             eliminatedPlayers.sort((a, b) => {
@@ -545,16 +574,55 @@
                 return (b.wins || 0) - (a.wins || 0);
             });
 
+            // Calculate cut line for cutline tournaments
+            let cutLineInfo = null;
+            if (currentTournamentData?.type === 'cutline' && 
+                currentTournamentData.currentRound > 0 && 
+                currentTournamentData.currentRound < currentTournamentData.totalRounds &&
+                sortedActivePlayers.length > 0) {
+                
+                // Use the EXACT same algorithm as admin panel
+                // Sort players for cut line calculation (worst first)
+                const sortedForCut = sortPlayersForCutLine(sortedActivePlayers, roundParticipants);
+                
+                // Calculate target - use all players (including eliminated) for original count
+                const allPlayersCount = players.length;
+                const { targetRemaining, idealTarget, targetPercentage } = calculateCutLineTarget(
+                    allPlayersCount,
+                    currentTournamentData.currentRound,
+                    currentTournamentData.totalRounds,
+                    sortedForCut
+                );
+                
+                // Calculate how many to cut (exact same logic as admin)
+                const cutCount = sortedActivePlayers.length - targetRemaining;
+                
+                // Players to cut are simply the first cutCount from sorted array (worst performers)
+                const cutlinePlayerIds = new Set();
+                if (cutCount > 0) {
+                    const playersToCut = sortedForCut.slice(0, cutCount);
+                    playersToCut.forEach(p => cutlinePlayerIds.add(p.id));
+                }
+                
+                cutLineInfo = {
+                    targetRemaining,
+                    idealTarget,
+                    targetPercentage,
+                    cutCount,
+                    cutlinePlayerIds
+                };
+            }
+            
             // Calculate golf-style positions (ties get same rank) for active players
             const playersWithPositions = [];
             let currentRank = 1;
             
-            for (let i = 0; i < activePlayers.length; i++) {
-                const player = activePlayers[i];
+            for (let i = 0; i < sortedActivePlayers.length; i++) {
+                const player = sortedActivePlayers[i];
                 const playerWins = player.wins || 0;
                 
                 // If this player has same wins as previous, they get same rank
-                if (i > 0 && playerWins === (activePlayers[i - 1].wins || 0)) {
+                if (i > 0 && playerWins === (sortedActivePlayers[i - 1].wins || 0)) {
                     playersWithPositions.push({ ...player, rank: playersWithPositions[i - 1].rank });
                 } else {
                     playersWithPositions.push({ ...player, rank: currentRank });
@@ -569,7 +637,7 @@
                 newPositions[player.id] = player.rank;
             });
 
-            const renderPlayer = (player, rank = null, isEliminated = false) => {
+            const renderPlayer = (player, rank = null, isEliminated = false, inDangerZone = false) => {
                 const rankClass = rank && rank <= 3 ? `rank-${rank}` : '';
                 const tableName = player.tableId 
                     ? `Table ${tablesData[player.tableId]?.tableNumber || '?'} - ${player.position || '?'}`
@@ -585,15 +653,20 @@
                     }
                 }
                 
-                const rowStyle = isEliminated ? 'opacity: 0.5; background: #fee2e2;' : '';
+                let rowStyle = '';
+                if (isEliminated) {
+                    rowStyle = 'opacity: 0.5; background: #fee2e2;';
+                } else if (inDangerZone) {
+                    rowStyle = 'background: #fef3c7;'; // Yellow warning for danger zone
+                }
+                
                 const displayRank = isEliminated ? (player.isHistorical ? '—' : `R${player.eliminatedInRound}`) : rank;
-                const playerLabel = player.isHistorical ? ' ⏳' : (isEliminated ? ' 🚫' : '');
 
                 return `
                     <div class="leaderboard-row" style="${rowStyle}">
                         <div class="rank ${rankClass}">${displayRank} ${movementIndicator}</div>
                         <div class="player-info">
-                            <div class="player-name">${player.name}${playerLabel}</div>
+                            <div class="player-name">${player.name}</div>
                             <div class="player-table">${tableName}</div>
                         </div>
                         <div class="wins">${player.wins || 0}</div>
@@ -604,8 +677,42 @@
 
             let leaderboardHTML = '';
             
-            // Active players
-            leaderboardHTML += playersWithPositions.map(p => renderPlayer(p, p.rank, false)).join('');
+            // Active players with cut line indicator
+            if (cutLineInfo && cutLineInfo.cutCount > 0) {
+                // Separate safe players from danger zone players
+                const safePlayers = [];
+                const dangerPlayers = [];
+                
+                for (const player of playersWithPositions) {
+                    if (cutLineInfo.cutlinePlayerIds.has(player.id)) {
+                        dangerPlayers.push(player);
+                    } else {
+                        safePlayers.push(player);
+                    }
+                }
+                
+                // Render safe players first
+                leaderboardHTML += safePlayers.map(p => renderPlayer(p, p.rank, false, false)).join('');
+                
+                // Insert cut line divider
+                if (dangerPlayers.length > 0) {
+                    const percentageText = Math.round(cutLineInfo.targetPercentage * 100);
+                    leaderboardHTML += `
+                        <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 12px 25px; font-weight: bold; color: white; font-size: 14px; text-align: center; border-top: 3px solid #991b1b; border-bottom: 3px solid #991b1b;">
+                            ⚠️ PROJECTED CUT LINE ⚠️
+                            <div style="font-size: 12px; margin-top: 4px; opacity: 0.9;">
+                                ${cutLineInfo.cutCount} player${cutLineInfo.cutCount !== 1 ? 's' : ''} to be eliminated • Target: ${cutLineInfo.targetRemaining} players (${percentageText}%)
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Render danger zone players
+                    leaderboardHTML += dangerPlayers.map(p => renderPlayer(p, p.rank, false, true)).join('');
+                }
+            } else {
+                // No cut line - render normally
+                leaderboardHTML += playersWithPositions.map(p => renderPlayer(p, p.rank, false, false)).join('');
+            }
             
             // Eliminated and historical players section
             if (eliminatedPlayers.length > 0) {
@@ -618,7 +725,7 @@
                             Eliminated Players
                         </div>
                     `;
-                    leaderboardHTML += currentlyEliminated.map(p => renderPlayer(p, null, true)).join('');
+                    leaderboardHTML += currentlyEliminated.map(p => renderPlayer(p, null, true, false)).join('');
                 }
                 
                 if (historicalPlayers.length > 0) {
@@ -627,7 +734,7 @@
                             Historical Participants (Removed from Tournament)
                         </div>
                     `;
-                    leaderboardHTML += historicalPlayers.map(p => renderPlayer(p, null, true)).join('');
+                    leaderboardHTML += historicalPlayers.map(p => renderPlayer(p, null, true, false)).join('');
                 }
             }
 
