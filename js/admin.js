@@ -3511,11 +3511,7 @@ window.restartSpecificRound = async function(roundNumber, roundId) {
         async () => {
     try {
         // Update specific round record to in progress
-        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
-        await updateDoc(roundRef, {
-            status: ROUND_STATUS.IN_PROGRESS,
-            endedAt: null
-        });
+        await roundService.restartRound(roundId);
         
         // Update tournament to make this the current round
         await tournamentService.update(currentTournamentId, {
@@ -3597,15 +3593,10 @@ moveToNextRoundBtn.addEventListener('click', async () => {
     
     try {
         // Create round record in staging state with tournament's default timer
-        const roundRef = doc(collection(db, 'tournaments', currentTournamentId, 'rounds'));
-        await setDoc(roundRef, {
-            roundNumber: nextRound,
-            status: ROUND_STATUS.STAGING,
-            timerDuration: defaultTimer, // Store in minutes (use tournament default)
-            scoreMultiplier: 1, // Default multiplier is 1x
-            startedAt: null,
-            endedAt: null,
-            createdAt: serverTimestamp()
+        await roundService.createRound(nextRound, {
+            timerDuration: defaultTimer,
+            scoreMultiplier: 1,
+            isPlayoff: false
         });
         
         // Update tournament to reflect new current round (but not in progress)
@@ -3737,10 +3728,7 @@ document.getElementById('confirmStartRoundBtn').addEventListener('click', async 
         }
         
         // Update round to in_progress status
-        await updateDoc(roundRef, {
-            status: ROUND_STATUS.IN_PROGRESS,
-            startedAt: serverTimestamp()
-        });
+        await roundService.startRound(roundId);
         
         // Snapshot all active players into participants subcollection
         const participantsPromises = activePlayers.map(player => {
@@ -4084,15 +4072,12 @@ document.getElementById('endRoundOnlyBtn').addEventListener('click', async () =>
         await tournamentService.setRoundInProgress(currentTournamentId, false);
         
         // Update round record to completed
-        const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
-        for (const roundDoc of roundsSnap.docs) {
-            const roundData = roundDoc.data();
-            if (roundData.roundNumber === currentRound && roundData.status === ROUND_STATUS.IN_PROGRESS) {
-                await updateDoc(roundDoc.ref, {
-                    endedAt: serverTimestamp(),
-                    status: 'completed'
-                });
-            }
+        try {
+            const round = await roundService.getByNumber(currentRound);
+            if (round) await roundService.endRound(round.id);
+        } catch (error) {
+            console.error('Error finding/ending round:', error);
+            // Continue anyway - tournament state is already updated
         }
         
         // For cutline tournaments, reset tables but DON'T eliminate players
@@ -4155,15 +4140,12 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
         await tournamentService.setRoundInProgress(currentTournamentId, false);
         
         // Update round record to completed
-        const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
-        for (const roundDoc of roundsSnap.docs) {
-            const roundData = roundDoc.data();
-            if (roundData.roundNumber === currentRound && roundData.status === ROUND_STATUS.IN_PROGRESS) {
-                await updateDoc(roundDoc.ref, {
-                    endedAt: serverTimestamp(),
-                    status: 'completed'
-                });
-            }
+        try {
+            const round = await roundService.getByNumber(currentRound);
+            if (round) await roundService.endRound(round.id);
+        } catch (error) {
+            console.error('Error finding/ending round:', error);
+            // Continue anyway - tournament state is already updated
         }
         
         // Cut line specific actions
