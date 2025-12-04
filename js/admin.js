@@ -474,11 +474,11 @@ async function selectTournament(tournamentId) {
     tournamentContent.classList.remove('hidden');
     
     // Load tournament info
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
-    if (tournamentDoc.exists()) {
-        window.currentTournamentData = tournamentDoc.data(); // Store for player count display
-        displayTournamentInfo(window.currentTournamentData);
-        await displayRoundInfo(window.currentTournamentData);
+    try {
+        const tournamentData = await tournamentService.getById(tournamentId);
+        window.currentTournamentData = tournamentData; // Store for player count display
+        displayTournamentInfo(tournamentData);
+        await displayRoundInfo(tournamentData);
         
         // Update archive button text based on status
         if (window.currentTournamentData.status === TOURNAMENT_STATUS.COMPLETED) {
@@ -490,6 +490,11 @@ async function selectTournament(tournamentId) {
             archiveTournamentBtn.classList.remove('btn-success');
             archiveTournamentBtn.classList.add('btn-secondary');
         }
+    } catch (error) {
+        console.error('Error loading tournament:', error);
+        showToast(ERROR_MESSAGES.TOURNAMENT_NOT_FOUND, 'error');
+        deselectTournament();
+        return;
     }
     
     // Set up real-time listeners
@@ -620,7 +625,7 @@ function displayTournamentInfo(data) {
             `<p>Change tournament status to <strong>"${newStatus}"</strong>?</p>`,
             async () => {
             try {
-                await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+                await tournamentService.update(currentTournamentId, {
                     status: newStatus
                 });
                 await loadTournaments();
@@ -649,7 +654,7 @@ function displayTournamentInfo(data) {
             `<p style="margin-top: 10px; color: #6b7280; font-size: 13px;">This will affect new rounds created after this change.</p>`,
             async () => {
             try {
-                await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+                await tournamentService.update(currentTournamentId, {
                     timerDuration: newDuration
                 });
                     showToast('Timer duration updated!', 'success');
@@ -2948,7 +2953,7 @@ archiveTournamentBtn.addEventListener('click', async () => {
         `<p style="margin-top: 10px; color: #6b7280;">This will change status to <strong>${newStatus}</strong>.</p>`,
         async () => {
     try {
-        await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+        await tournamentService.update(currentTournamentId, {
             status: newStatus
         });
         
@@ -3554,7 +3559,7 @@ window.restartSpecificRound = async function(roundNumber, roundId) {
         });
         
         // Update tournament to make this the current round
-        await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+        await tournamentService.update(currentTournamentId, {
             currentRound: roundNumber,
             roundInProgress: true
         });
@@ -3645,7 +3650,7 @@ moveToNextRoundBtn.addEventListener('click', async () => {
         });
         
         // Update tournament to reflect new current round (but not in progress)
-        await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+        await tournamentService.update(currentTournamentId, {
             currentRound: nextRound,
             roundInProgress: false
         });
@@ -3797,9 +3802,7 @@ document.getElementById('confirmStartRoundBtn').addEventListener('click', async 
         await Promise.all(participantsPromises);
         
         // Update tournament to mark round in progress
-        await updateDoc(doc(db, 'tournaments', currentTournamentId), {
-            roundInProgress: true
-        });
+        await tournamentService.setRoundInProgress(currentTournamentId, true);
         
         showToast(`Round ${currentRound} started with ${activePlayers.length} participants!`, "success");
         window.pendingRoundStart = null;
@@ -4119,9 +4122,7 @@ document.getElementById('endRoundOnlyBtn').addEventListener('click', async () =>
         const isLastRound = totalRounds > 0 && currentRound >= totalRounds;
         
         // Update tournament: mark round as not in progress
-        await updateDoc(doc(db, 'tournaments', currentTournamentId), {
-            roundInProgress: false
-        });
+        await tournamentService.setRoundInProgress(currentTournamentId, false);
         
         // Update round record to completed
         const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
@@ -4192,9 +4193,7 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
         const isLastRound = totalRounds > 0 && currentRound >= totalRounds;
         
         // Update tournament: mark round as not in progress
-        await updateDoc(doc(db, 'tournaments', currentTournamentId), {
-            roundInProgress: false
-        });
+        await tournamentService.setRoundInProgress(currentTournamentId, false);
         
         // Update round record to completed
         const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
