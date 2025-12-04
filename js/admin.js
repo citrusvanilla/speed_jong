@@ -231,14 +231,8 @@ loadTournaments();
 // Tournament Management
 async function loadTournaments() {
     try {
-        const tournamentsSnap = await getDocs(collection(db, 'tournaments'));
+        const tournaments = await tournamentService.getAll();
         tournamentSelect.innerHTML = '<option value="">Select Tournament...</option>';
-        
-        // Convert to array and sort by status and date
-        const tournaments = [];
-        tournamentsSnap.forEach((doc) => {
-            tournaments.push({ id: doc.id, ...doc.data() });
-        });
         
         // Sort: active/setup first, then by date descending
         tournaments.sort((a, b) => {
@@ -546,8 +540,8 @@ document.getElementById('importFileInput').addEventListener('change', async (e) 
         
         // Check if tournament name already exists
         let tournamentName = importData.tournament.name;
-        const existingTournaments = await getDocs(collection(db, 'tournaments'));
-        const existingNames = existingTournaments.docs.map(doc => doc.data().name);
+        const existingTournaments = await tournamentService.getAll();
+        const existingNames = existingTournaments.map(t => t.name);
         
         if (existingNames.includes(tournamentName)) {
             // Suggest new name with timestamp
@@ -763,8 +757,8 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
     
     try {
         // Check if tournament name already exists
-        const existingTournaments = await getDocs(collection(db, 'tournaments'));
-        const existingNames = existingTournaments.docs.map(doc => doc.data().name);
+        const existingTournaments = await tournamentService.getAll();
+        const existingNames = existingTournaments.map(t => t.name);
         
         if (existingNames.includes(name)) {
             showToast(`A tournament named "${name}" already exists. Please choose a different name.`, 'error');
@@ -1059,8 +1053,11 @@ async function displayPlayerStatsTable(allPlayers) {
 
 document.getElementById('addPlayerBtn').addEventListener('click', async () => {
     // Check player limit
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-    const tournamentData = tournamentDoc.data();
+    const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
     const maxPlayers = tournamentData.maxPlayers || 0;
     const currentPlayerCount = Object.keys(playersData).length;
     
@@ -1106,8 +1103,11 @@ document.getElementById('eliminatePlayersBtn').addEventListener('click', async (
     if (!currentTournamentId) return;
     
     try {
-        const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-        const tournamentData = tournamentDoc.data();
+        const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
         const currentRound = tournamentData.currentRound || 0;
         const type = tournamentData.type || 'standard';
         const totalRounds = tournamentData.totalRounds || 0;
@@ -1123,21 +1123,19 @@ document.getElementById('eliminatePlayersBtn').addEventListener('click', async (
         }
         
         // Check if current round is in staging - if so, we're eliminating based on LAST completed round
-        const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
+        const rounds = await roundService.getAll();
         let lastCompletedRound = 0;
         let roundParticipants = {};
         
-        for (const roundDoc of roundsSnap.docs) {
-            const roundData = roundDoc.data();
+        for (const roundData of rounds) {
             // Find the most recent completed round
             if (roundData.status === ROUND_STATUS.COMPLETED && roundData.roundNumber > lastCompletedRound) {
                 lastCompletedRound = roundData.roundNumber;
             }
             // Get participants from the last completed round for scoring
             if (roundData.roundNumber === lastCompletedRound && roundData.status === ROUND_STATUS.COMPLETED) {
-                const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundDoc.id, 'participants'));
-                participantsSnap.forEach(pDoc => {
-                    const pData = pDoc.data();
+                const participants = await roundService.getParticipants(roundData.id);
+                participants.forEach(pData => {
                     roundParticipants[pData.playerId] = pData;
                 });
             }
@@ -1409,13 +1407,11 @@ document.getElementById('importBulkPlayerBtn').addEventListener('click', async (
     }
     
     // Check player limit
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-    if (!tournamentDoc.exists()) {
-        showToast('Tournament not found.', 'error');
+    const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
         return;
     }
-    
-    const tournamentData = tournamentDoc.data();
     const maxPlayers = tournamentData.maxPlayers || 0;
     const currentPlayerCount = Object.keys(playersData).length;
     
@@ -1510,8 +1506,11 @@ document.getElementById('playerForm').addEventListener('submit', async (e) => {
             await playerService.updatePlayer(currentEditingPlayerId, { name });
         } else {
             // Create new player - double check limit (in case it changed)
-            const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-            const tournamentData = tournamentDoc.data();
+            const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
             const maxPlayers = tournamentData.maxPlayers || 0;
             const currentPlayerCount = Object.keys(playersData).length;
             
@@ -1720,11 +1719,8 @@ window.changePlayerScore = async function(playerId, playerName) {
     roundSelect.innerHTML = '<option value="">Select a round...</option>';
     
     try {
-        const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
-        const rounds = [];
-        roundsSnap.forEach(doc => {
-            rounds.push({ id: doc.id, ...doc.data() });
-        });
+        const rounds = await roundService.getAll();
+        // rounds already contains all round data with ids from roundService.getAll()
         
         // Sort by round number
         rounds.sort((a, b) => a.roundNumber - b.roundNumber);
@@ -1762,11 +1758,10 @@ document.getElementById('changeScoreRound').addEventListener('change', async (e)
         const round = currentChangeScoreData.rounds.find(r => r.id === roundId);
         
         // Get participant data for this round
-        const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants'));
+        const participants = await roundService.getParticipants(roundId);
         
         let participantData = null;
-        participantsSnap.forEach(doc => {
-            const data = doc.data();
+        participants.forEach(data => {
             if (data.playerId === currentChangeScoreData.playerId) {
                 participantData = { id: doc.id, ...data };
             }
@@ -2077,8 +2072,11 @@ window.deletePlayer = async function(playerId) {
     const player = playersData[playerId];
     
     // Get tournament data for round check
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-    const tournamentData = tournamentDoc.data();
+    const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
     const roundInProgress = tournamentData.roundInProgress || false;
     const currentRound = tournamentData.currentRound || 0;
     
@@ -2599,8 +2597,12 @@ document.getElementById('exportTournamentBtn').addEventListener('click', async (
         showToast('Exporting tournament data...', 'info');
         
         // Get tournament document
-        const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-        const tournamentData = { id: currentTournamentId, ...tournamentDoc.data() };
+        const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
+        // tournamentData already has id from service
         
         // Convert Firestore timestamps to ISO strings for JSON
         if (tournamentData.createdAt) {
@@ -2608,10 +2610,8 @@ document.getElementById('exportTournamentBtn').addEventListener('click', async (
         }
         
         // Get all players
-        const playersSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'players'));
-        const players = [];
-        playersSnap.forEach(doc => {
-            const playerData = { id: doc.id, ...doc.data() };
+        const players = await playerService.getAll();
+        players.forEach(playerData => {
             // Convert timestamps
             if (playerData.lastWinAt) {
                 playerData.lastWinAt = playerData.lastWinAt.toDate().toISOString();
@@ -2620,17 +2620,13 @@ document.getElementById('exportTournamentBtn').addEventListener('click', async (
         });
         
         // Get all tables
-        const tablesSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'tables'));
-        const tables = [];
-        tablesSnap.forEach(doc => {
-            tables.push({ id: doc.id, ...doc.data() });
-        });
+        const tables = await tableService.getAll();
+        // tables already contains all table data with ids from tableService.getAll()
         
         // Get all rounds with their participants
-        const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
-        const rounds = [];
-        for (const roundDoc of roundsSnap.docs) {
-            const roundData = { id: roundDoc.id, ...roundDoc.data() };
+        const rounds = await roundService.getAll();
+        // rounds already contains all round data with ids from roundService.getAll()
+        for (const roundData of rounds) {
             
             // Convert timestamps
             if (roundData.startedAt) {
@@ -2644,10 +2640,8 @@ document.getElementById('exportTournamentBtn').addEventListener('click', async (
             }
             
             // Get participants for this round
-            const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundDoc.id, 'participants'));
-            const participants = [];
-            participantsSnap.forEach(pDoc => {
-                const pData = { id: pDoc.id, ...pDoc.data() };
+            const participants = await roundService.getParticipants(roundData.id);
+            participants.forEach(pData => {
                 // Convert timestamps
                 if (pData.snapshotAt) {
                     pData.snapshotAt = pData.snapshotAt.toDate().toISOString();
@@ -2697,8 +2691,11 @@ document.getElementById('exportTournamentBtn').addEventListener('click', async (
 archiveTournamentBtn.addEventListener('click', async () => {
     if (!currentTournamentId) return;
     
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-    const tournamentData = tournamentDoc.data();
+    const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
     
     const isCompleted = tournamentData.status === TOURNAMENT_STATUS.COMPLETED;
     const newStatus = isCompleted ? TOURNAMENT_STATUS.ACTIVE : TOURNAMENT_STATUS.COMPLETED;
@@ -2729,8 +2726,11 @@ archiveTournamentBtn.addEventListener('click', async () => {
 deleteTournamentBtn.addEventListener('click', async () => {
     if (!currentTournamentId) return;
     
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-    const tournamentData = tournamentDoc.data();
+    const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
     
     const message = `<p style="color: #ef4444; font-weight: bold;">⚠️ WARNING: Delete "${tournamentData.name}"?</p>` +
         `<p style="margin-top: 15px;">This will permanently delete:</p>` +
@@ -2752,21 +2752,23 @@ deleteTournamentBtn.addEventListener('click', async () => {
         // Delete all subcollections first
         
         // Delete all players
-        const playersSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'players'));
+        const players = await playerService.getAll();
         const deletePlayerPromises = playersSnap.docs.map(doc => deleteDoc(doc.ref));
         await Promise.all(deletePlayerPromises);
         
         // Delete all tables
-        const tablesSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'tables'));
+        const tables = await tableService.getAll();
         const deleteTablePromises = tablesSnap.docs.map(doc => deleteDoc(doc.ref));
         await Promise.all(deleteTablePromises);
         
         // Delete all rounds (if any)
-        const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
+        const rounds = await roundService.getAll();
                 for (const roundDoc of roundsSnap.docs) {
                     // Delete participants first
-                    const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundDoc.id, 'participants'));
-                    const deleteParticipantPromises = participantsSnap.docs.map(pDoc => deleteDoc(pDoc.ref));
+                    const participants = await roundService.getParticipants(roundData.id);
+                    const deleteParticipantPromises = participants.map(p => 
+                        deleteDoc(doc(db, 'tournaments', currentTournamentId, 'rounds', roundData.id, 'participants', p.id))
+                    );
                     await Promise.all(deleteParticipantPromises);
                     
                     // Then delete round
@@ -2945,12 +2947,12 @@ async function displayRoundInfo(data) {
         
         if (currentRound > 0) {
             // Find the current round document to get its actual status
-            const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
+            const rounds = await roundService.getAll();
             for (const roundDoc of roundsSnap.docs) {
                 const roundData = roundDoc.data();
                 if (roundData.roundNumber === currentRound) {
                     roundStatus = roundData.status || 'staging';
-                    currentRoundData = { id: roundDoc.id, ...roundData };
+                    currentRoundData = { id: roundData.id, ...roundData };
                     break;
                 }
             }
@@ -3118,11 +3120,10 @@ async function loadRoundParticipants(roundNumber) {
     
     try {
         // Find the round document
-        const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
+        const rounds = await roundService.getAll();
         let currentRoundId = null;
         
-        roundsSnap.forEach(doc => {
-            const roundData = doc.data();
+        rounds.forEach(roundData => {
             if (roundData.roundNumber === roundNumber && roundData.status === ROUND_STATUS.IN_PROGRESS) {
                 currentRoundId = doc.id;
             }
@@ -3134,17 +3135,15 @@ async function loadRoundParticipants(roundNumber) {
         }
         
         // Load participants for this round
-        const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', currentRoundId, 'participants'));
+        const participants = await roundService.getParticipants(currentRoundId);
         
-        if (participantsSnap.empty) {
+        if (participants.length === 0) {
             document.getElementById('roundParticipantsSection').style.display = 'none';
             return;
         }
         
         const participants = [];
-        participantsSnap.forEach(doc => {
-            participants.push({ id: doc.id, ...doc.data() });
-        });
+        // participants already has all data with ids from roundService.getParticipants()
         
         // Get current wins and calculate round wins from scoreEvents
         for (const participant of participants) {
@@ -3222,17 +3221,12 @@ async function loadRoundsHistory() {
     if (!currentTournamentId) return;
     
     try {
-        const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
+        const rounds = await roundService.getAll();
         
-        if (roundsSnap.empty) {
+        if (rounds.length === 0) {
             roundsHistory.innerHTML = '';
             return;
         }
-        
-        const rounds = [];
-        roundsSnap.forEach(doc => {
-            rounds.push({ id: doc.id, ...doc.data() });
-        });
         
         // Sort by round number
         rounds.sort((a, b) => a.roundNumber - b.roundNumber);
@@ -3292,8 +3286,11 @@ async function loadRoundsHistory() {
 window.restartSpecificRound = async function(roundNumber, roundId) {
     if (!currentTournamentId) return;
     
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-    const data = tournamentDoc.data();
+    const data = await tournamentService.getById(currentTournamentId);
+    if (!data) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
     const currentRound = data.currentRound || 0;
     
     showConfirmAction(
@@ -3359,8 +3356,11 @@ window.editRoundMultiplier = async function(roundId, roundNumber, currentMultipl
         loadRoundsHistory();
         
         // Refresh current round info if this is the current round
-        const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-        const tournamentData = tournamentDoc.data();
+        const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
         if (tournamentData.currentRound === roundNumber) {
             // Trigger a refresh of the entire tournament view
             selectTournament(currentTournamentId);
@@ -3377,8 +3377,11 @@ window.editRoundMultiplier = async function(roundId, roundNumber, currentMultipl
 moveToNextRoundBtn.addEventListener('click', async () => {
     if (!currentTournamentId) return;
     
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-    const data = tournamentDoc.data();
+    const data = await tournamentService.getById(currentTournamentId);
+    if (!data) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
     const nextRound = (data.currentRound || 0) + 1;
     const totalRounds = data.totalRounds || 0;
     const defaultTimer = data.timerDuration || 5;
@@ -3415,8 +3418,11 @@ moveToNextRoundBtn.addEventListener('click', async () => {
 startRoundBtn.addEventListener('click', async () => {
     if (!currentTournamentId) return;
     
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-    const data = tournamentDoc.data();
+    const data = await tournamentService.getById(currentTournamentId);
+    if (!data) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
     const currentRound = data.currentRound || 0;
     
     if (currentRound === 0) {
@@ -3508,14 +3514,13 @@ document.getElementById('confirmStartRoundBtn').addEventListener('click', async 
     
     try {
         // Find the existing round document
-        const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
+        const rounds = await roundService.getAll();
         let roundId = null;
         let roundRef = null;
         
-        for (const roundDoc of roundsSnap.docs) {
-            const roundData = roundDoc.data();
+        for (const roundData of rounds) {
             if (roundData.roundNumber === currentRound) {
-                roundId = roundDoc.id;
+                roundId = roundData.id;
                 roundRef = roundDoc.ref;
                 break;
             }
@@ -3678,8 +3683,11 @@ document.getElementById('confirmAddTimeBtn').addEventListener('click', async () 
 endRoundBtn.addEventListener('click', async () => {
     if (!currentTournamentId) return;
     
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-    const data = tournamentDoc.data();
+    const data = await tournamentService.getById(currentTournamentId);
+    if (!data) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
     const currentRound = data.currentRound || 0;
     const type = data.type || 'standard';
     const totalRounds = data.totalRounds || 0;
@@ -3701,13 +3709,12 @@ endRoundBtn.addEventListener('click', async () => {
         // Get round participants to calculate per-round wins
         let roundParticipants = {};
         try {
-            const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
+            const rounds = await roundService.getAll();
             for (const roundDoc of roundsSnap.docs) {
                 const roundData = roundDoc.data();
                 if (roundData.roundNumber === currentRound && roundData.status === ROUND_STATUS.IN_PROGRESS) {
-                    const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundDoc.id, 'participants'));
-                    participantsSnap.forEach(pDoc => {
-                        const pData = pDoc.data();
+                    const participants = await roundService.getParticipants(roundData.id);
+                    participants.forEach(pData => {
                         roundParticipants[pData.playerId] = pData;
                     });
                     break;
@@ -3862,8 +3869,11 @@ document.getElementById('endRoundOnlyBtn').addEventListener('click', async () =>
     
     try {
         // Determine if this is the last round
-        const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-        const tournamentData = tournamentDoc.data();
+        const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
         const isLastRound = totalRounds > 0 && currentRound >= totalRounds;
         
         // Update tournament: mark round as not in progress
@@ -3930,8 +3940,11 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
     
     try {
         // Determine if this is the last round
-        const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-        const tournamentData = tournamentDoc.data();
+        const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
         const isLastRound = totalRounds > 0 && currentRound >= totalRounds;
         
         // Update tournament: mark round as not in progress
@@ -3997,18 +4010,17 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
             // If not last round and not playoff, do full auto-setup for next round
             if (!isLastRound && !wasPlayoffRound) {
                 // Query fresh player count after elimination
-                const playersSnapshot = await getDocs(collection(db, 'tournaments', currentTournamentId, 'players'));
+                const players = await playerService.getAll();
                 
-                const remainingPlayerDocs = playersSnapshot.docs.filter(doc => {
-                    const data = doc.data();
-                    const isEliminated = data.eliminated === true;
+                const remainingPlayerDocs = players.filter(player => {
+                    const isEliminated = player.eliminated === true;
                     return !isEliminated;
                 });
                 const remainingPlayers = remainingPlayerDocs.length;
                 
                 // Query fresh table data after clearing tables
-                const tablesSnapshot = await getDocs(collection(db, 'tournaments', currentTournamentId, 'tables'));
-                const freshTables = tablesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const tables = await tableService.getAll();
+                const freshTables = tables; // already has id from tableService
                 
                 // Auto-assign players to tables starting from table 1
                 const activeTables = freshTables
@@ -4088,8 +4100,8 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
                 selectTournament(currentTournamentId); // Refresh to show playoff button
             } else if (wasPlayoffRound) {
                 // Playoff round ended - query fresh count from database
-                const playersSnapshot = await getDocs(collection(db, 'tournaments', currentTournamentId, 'players'));
-                const remainingPlayers = playersSnapshot.docs.filter(doc => !doc.data().eliminated).length;
+                const players = await playerService.getAll();
+                const remainingPlayers = players.filter(player => !player.eliminated).length;
                 const eliminationMsg = eliminatedCount > 0 ? `\n✅ ${eliminatedCount} player(s) eliminated.\n` : '';
                 showToast(`Playoff round ended!\n${eliminationMsg}\n${remainingPlayers} player(s) remaining.\n\nYou can create another playoff round or end the tournament.`, "success");
                 selectTournament(currentTournamentId); // Refresh to show playoff button
@@ -4130,8 +4142,11 @@ document.getElementById('skipTableAssignmentBtn').addEventListener('click', () =
 createPlayoffBtnMain.addEventListener('click', async () => {
     if (!currentTournamentId) return;
     
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-    const tournamentData = tournamentDoc.data();
+    const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
     const totalRounds = tournamentData.totalRounds || 0;
     const activePlayers = Object.values(playersData).filter(p => !p.eliminated);
     const remainingPlayers = activePlayers.length;
@@ -4213,8 +4228,11 @@ document.getElementById('createPlayoffBtn').addEventListener('click', async () =
     document.getElementById('playoffOptionModal').classList.add('hidden');
     
     try {
-        const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
-        const tournamentData = tournamentDoc.data();
+        const tournamentData = await tournamentService.getById(currentTournamentId);
+    if (!tournamentData) {
+        showToast('Tournament not found', 'error');
+        return;
+    }
         const currentRound = tournamentData.currentRound || 0;
         const defaultTimer = tournamentData.timerDuration || 5;
         
@@ -5262,9 +5280,9 @@ window.viewRoundDetails = async function(roundId) {
         `;
         
         // Fetch all participants for this round
-        const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants'));
+        const participants = await roundService.getParticipants(roundId);
         
-        if (participantsSnap.empty) {
+        if (participants.length === 0) {
             document.getElementById('roundDetailsTables').innerHTML = '<p style="color: #6b7280; text-align: center; padding: 20px;">No participant data found for this round.</p>';
             document.getElementById('roundDetailsModal').classList.remove('hidden');
             return;
@@ -5272,8 +5290,7 @@ window.viewRoundDetails = async function(roundId) {
         
         // Group participants by table
         const tableGroups = {};
-        participantsSnap.forEach(doc => {
-            const participant = { id: doc.id, ...doc.data() };
+        participants.forEach(participant => {
             const tableId = participant.tableId || 'unassigned';
             
             if (!tableGroups[tableId]) {
@@ -5283,10 +5300,10 @@ window.viewRoundDetails = async function(roundId) {
         });
         
         // Get table data to display table numbers
-        const tablesSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'tables'));
+        const tables = await tableService.getAll();
         const tablesMap = {};
-        tablesSnap.forEach(doc => {
-            tablesMap[doc.id] = { id: doc.id, ...doc.data() };
+        tables.forEach(table => {
+            tablesMap[table.id] = table;
         });
         
         // Render tables
@@ -5789,11 +5806,10 @@ window.addWinToTable = async function(roundId, tableId) {
         }
         
         // Get all participants at this table
-        const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants'));
+        const participants = await roundService.getParticipants(roundId);
         
         const playersAtTable = [];
-        participantsSnap.forEach(doc => {
-            const participant = { id: doc.id, ...doc.data() };
+        participants.forEach(participant => {
             if (participant.tableId === tableId) {
                 playersAtTable.push(participant);
             }
@@ -5958,11 +5974,10 @@ window.redistributeTableScores = async function(roundId, tableId) {
         }
         
         // Get all participants at this table
-        const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants'));
+        const participants = await roundService.getParticipants(roundId);
         
         const playersAtTable = [];
-        participantsSnap.forEach(doc => {
-            const participant = { id: doc.id, ...doc.data() };
+        participants.forEach(participant => {
             if (participant.tableId === tableId) {
                 playersAtTable.push(participant);
             }

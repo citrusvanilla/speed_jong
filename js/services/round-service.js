@@ -169,6 +169,22 @@ export class RoundService extends BaseService {
     }
     
     /**
+     * Get all participants for a specific round
+     * @param {string} roundId - The round ID
+     * @returns {Promise<Array>} Array of participant data
+     */
+    async getParticipants(roundId) {
+        try {
+            const participantsRef = this.firestore.collection(this.db, 'tournaments', this.tournamentId, 'rounds', roundId, 'participants');
+            const snapshot = await this.firestore.getDocs(participantsRef);
+            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } catch (error) {
+            console.error(`Error getting participants for round ${roundId}:`, error);
+            return [];
+        }
+    }
+    
+    /**
      * Get round participants
      * @param {string} roundId - Round ID
      * @returns {Promise<Array>} Array of participants
