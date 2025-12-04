@@ -581,7 +581,6 @@ document.getElementById('importFileInput').addEventListener('change', async (e) 
         };
         
         // Create tournament document
-        const tournamentRef = doc(collection(db, 'tournaments'));
         const tournamentData = { ...importData.tournament };
         delete tournamentData.id; // Remove old ID
         tournamentData.name = tournamentName; // Use new name if changed
@@ -592,12 +591,10 @@ document.getElementById('importFileInput').addEventListener('change', async (e) 
         // Convert timestamps
         if (tournamentData.createdAt) {
             tournamentData.createdAt = toTimestamp(tournamentData.createdAt);
-        } else {
-            tournamentData.createdAt = serverTimestamp();
         }
+        // createdAt will be auto-added by service.create()
         
-        await setDoc(tournamentRef, tournamentData);
-        const newTournamentId = tournamentRef.id;
+        const newTournamentId = await tournamentService.create(tournamentData);
         
         // Import players (batch write)
         if (importData.players && importData.players.length > 0) {
@@ -656,7 +653,6 @@ document.getElementById('importFileInput').addEventListener('change', async (e) 
         // Import rounds with participants
         if (importData.rounds && importData.rounds.length > 0) {
             for (const round of importData.rounds) {
-                const roundRef = doc(collection(db, 'tournaments', newTournamentId, 'rounds'));
                 const roundData = { ...round };
                 delete roundData.id; // Remove old ID
                 const participants = roundData.participants || [];
@@ -671,11 +667,10 @@ document.getElementById('importFileInput').addEventListener('change', async (e) 
                 }
                 if (roundData.createdAt) {
                     roundData.createdAt = toTimestamp(roundData.createdAt);
-                } else {
-                    roundData.createdAt = serverTimestamp();
                 }
+                // createdAt will be auto-added by service if not present
                 
-                await setDoc(roundRef, roundData);
+                const roundId = await roundService.create(roundData);
                 
                 // Import participants for this round (batch write)
                 if (participants.length > 0) {
@@ -683,7 +678,7 @@ document.getElementById('importFileInput').addEventListener('change', async (e) 
                     let participantCount = 0;
                     
                     for (const participant of participants) {
-                        const participantRef = doc(collection(db, 'tournaments', newTournamentId, 'rounds', roundRef.id, 'participants'));
+                        const participantRef = doc(collection(db, 'tournaments', newTournamentId, 'rounds', roundId, 'participants'));
                         const participantData = { ...participant };
                         delete participantData.id; // Remove old ID
                         
@@ -787,8 +782,7 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
             tournamentCode = await generateUniqueTournamentCode();
         }
         
-        const tournamentRef = doc(collection(db, 'tournaments'));
-        await setDoc(tournamentRef, {
+        const newTournamentId = await tournamentService.create({
             name,
             type,
             timerDuration,
@@ -797,16 +791,15 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
             tournamentCode,
             status: TOURNAMENT_STATUS.STAGING,
             currentRound: 0,
-            roundInProgress: false,
-            createdAt: serverTimestamp()
+            roundInProgress: false
         });
         
         tournamentModal.classList.add('hidden');
         document.getElementById('tournamentTournamentCode').value = ''; // Clear for next time
         showToast(`Tournament "${name}" created successfully! Tournament Code: ${tournamentCode}`, 'success');
         await loadTournaments();
-        tournamentSelect.value = tournamentRef.id;
-        selectTournament(tournamentRef.id);
+        tournamentSelect.value = newTournamentId;
+        selectTournament(newTournamentId);
     } catch (error) {
         console.error('Error creating tournament:', error);
         showToast('Error creating tournament: ' + error.message, 'error');
@@ -3528,20 +3521,9 @@ document.getElementById('confirmStartRoundBtn').addEventListener('click', async 
         await roundService.startRound(roundId);
         
         // Snapshot all active players into participants subcollection
-        const participantsPromises = activePlayers.map(player => {
-            const participantRef = doc(collection(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants'));
-            return setDoc(participantRef, {
-                playerId: player.id,
-                name: player.name,
-                wins: player.wins || 0,
-                points: player.points || 0,
-                tableId: player.tableId || null,
-                position: player.position || null,
-                lastWinAt: player.lastWinAt || null,
-                scoreEvents: [], // Initialize empty scoreEvents array for new round
-                snapshotAt: serverTimestamp()
-            });
-        });
+        const participantsPromises = activePlayers.map(player => 
+            roundService.createParticipant(roundId, player)
+        );
         
         await Promise.all(participantsPromises);
         
@@ -4065,15 +4047,10 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
                     
                     // Create next round in staging with tournament's default timer
                     const defaultTimer = tournamentData.timerDuration || 30;
-                    const nextRoundRef = doc(collection(db, 'tournaments', currentTournamentId, 'rounds'));
-                    await setDoc(nextRoundRef, {
-                        roundNumber: currentRound + 1,
-                        status: ROUND_STATUS.STAGING,
+                    await roundService.createRound(currentRound + 1, {
                         timerDuration: defaultTimer,
-                        scoreMultiplier: 1, // Default multiplier is 1x
-                        createdAt: serverTimestamp(),
-                        startedAt: null,
-                        endedAt: null
+                        scoreMultiplier: 1,
+                        isPlayoff: false
                     });
                     
                     await updateDoc(doc(db, 'tournaments', currentTournamentId), {
@@ -4272,17 +4249,11 @@ document.getElementById('createPlayoffBtn').addEventListener('click', async () =
             async () => {
                 try {
                     // Create playoff round with tournament's default timer
-                    const roundRef = doc(collection(db, 'tournaments', currentTournamentId, 'rounds'));
-                    await setDoc(roundRef, {
-                        roundNumber: playoffRoundNumber,
-                        status: ROUND_STATUS.STAGING,
+                    await roundService.createRound(playoffRoundNumber, {
                         timerDuration: defaultTimer,
-                        scoreMultiplier: 1, // Default multiplier is 1x
+                        scoreMultiplier: 1,
                         isPlayoff: true,
-                        playoffPlayerCount: playoffPlayerCount,
-                        startedAt: null,
-                        endedAt: null,
-                        createdAt: serverTimestamp()
+                        playoffPlayerCount: playoffPlayerCount
                     });
                     
                     // Eliminate players not in playoff
@@ -4359,15 +4330,14 @@ document.getElementById('autoAssignTablesBtn').addEventListener('click', async (
             });
             
             // Create table
-            const tableRef = await addDoc(collection(db, 'tournaments', currentTournamentId, 'tables'), {
+            const newTable = await tableService.create({
                 tableNumber: nextTableNum + i,
                 players: playerIds,
                 positions: positionsMap,
-                active: true,
-                createdAt: serverTimestamp()
+                active: true
             });
             
-            tableRefs.push({ ref: tableRef, players: tablePlayers, positions });
+            tableRefs.push({ id: newTable.id, players: tablePlayers, positions });
         }
         
         // Use batch write to update all players
@@ -4903,14 +4873,9 @@ document.getElementById('confirmAddTableToMapBtn').addEventListener('click', asy
         const randomX = Math.floor(Math.random() * 800 + 200); // 200-1000
         const randomY = Math.floor(Math.random() * 500 + 150); // 150-650
         
-        await addDoc(collection(db, 'tournaments', currentTournamentId, 'tables'), {
-            tableNumber: tableNumber,
-            players: [],
-            positions: {},
+        await tableService.createTable(tableNumber, {
             mapX: randomX,
-            mapY: randomY,
-            active: true,
-            createdAt: serverTimestamp()
+            mapY: randomY
         });
         
         // Enable map if not already visible

@@ -207,6 +207,33 @@ export class RoundService extends BaseService {
     }
     
     /**
+     * Create a participant snapshot for a round
+     * @param {string} roundId - The round ID
+     * @param {Object} playerData - Player data to snapshot
+     * @returns {Promise<string>} Created participant ID
+     */
+    async createParticipant(roundId, playerData) {
+        try {
+            const participantRef = this.firestore.doc(this.firestore.collection(this.db, 'tournaments', this.tournamentId, 'rounds', roundId, 'participants'));
+            await this.firestore.setDoc(participantRef, {
+                playerId: playerData.id,
+                name: playerData.name,
+                wins: playerData.wins || 0,
+                points: playerData.points || 0,
+                tableId: playerData.tableId || null,
+                position: playerData.position || null,
+                lastWinAt: playerData.lastWinAt || null,
+                scoreEvents: [], // Initialize empty scoreEvents array for new round
+                snapshotAt: this.firestore.serverTimestamp()
+            });
+            return participantRef.id;
+        } catch (error) {
+            console.error(`Error creating participant for player ${playerData.id}:`, error);
+            throw error;
+        }
+    }
+    
+    /**
      * Get round participants
      * @param {string} roundId - Round ID
      * @returns {Promise<Array>} Array of participants
