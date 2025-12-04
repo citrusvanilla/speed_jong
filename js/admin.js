@@ -1710,9 +1710,7 @@ document.getElementById('playerForm').addEventListener('submit', async (e) => {
         
         if (currentEditingPlayerId) {
             // Update existing player
-            await updateDoc(doc(db, 'tournaments', currentTournamentId, 'players', currentEditingPlayerId), {
-                name
-            });
+            await playerService.updatePlayer(currentEditingPlayerId, { name });
         } else {
             // Create new player - double check limit (in case it changed)
             const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
@@ -1725,19 +1723,7 @@ document.getElementById('playerForm').addEventListener('submit', async (e) => {
                 return;
             }
             
-            const playerRef = doc(collection(db, 'tournaments', currentTournamentId, 'players'));
-            await setDoc(playerRef, {
-                name,
-                registeredAt: serverTimestamp(),
-                tableId: null,
-                position: null,
-                wins: 0,
-                points: 0,
-                lastWinAt: null,
-                scoreEvents: [], // Initialize empty scoreEvents array
-                eliminated: false,
-                eliminatedInRound: null
-            });
+            await playerService.addPlayer(name);
         }
         
         playerModal.classList.add('hidden');
@@ -1887,10 +1873,7 @@ window.eliminatePlayer = async function(playerId, currentRound) {
         `<p>Eliminate <strong>${player.name}</strong>?</p><p style="margin-top: 10px;">This will mark them as eliminated in Round ${currentRound}.</p>`,
         async () => {
             try {
-                await updateDoc(doc(db, 'tournaments', currentTournamentId, 'players', playerId), {
-                    eliminated: true,
-                    eliminatedInRound: currentRound
-                });
+                await playerService.eliminatePlayer(playerId, currentRound);
                 
                 showToast(`${player.name} has been eliminated.`, 'success');
             } catch (error) {
@@ -1911,10 +1894,7 @@ window.uneliminatePlayer = async function(playerId) {
         `<p>Restore <strong>${player.name}</strong>?</p><p style="margin-top: 10px;">This will remove their eliminated status.</p>`,
         async () => {
             try {
-                await updateDoc(doc(db, 'tournaments', currentTournamentId, 'players', playerId), {
-                    eliminated: false,
-                    eliminatedInRound: null
-                });
+                await playerService.reinstatePlayer(playerId);
                 
                 showToast(`${player.name} has been restored.`, 'success');
             } catch (error) {
@@ -2327,28 +2307,10 @@ window.deletePlayer = async function(playerId) {
     try {
         // If player is assigned to a table, remove them from it
         if (player.tableId) {
-            const tableRef = doc(db, 'tournaments', currentTournamentId, 'tables', player.tableId);
-            const tableDoc = await getDoc(tableRef);
-            if (tableDoc.exists()) {
-                const tableData = tableDoc.data();
-                const updatedPlayers = tableData.players.filter(id => id !== playerId);
-                const updatedPositions = { ...tableData.positions };
-                        
-                        // Delete position by finding which position this player occupied
-                        for (const [position, pId] of Object.entries(tableData.positions || {})) {
-                            if (pId === playerId) {
-                                delete updatedPositions[position];
-                            }
-                        }
-                
-                await updateDoc(tableRef, {
-                    players: updatedPlayers,
-                    positions: updatedPositions
-                });
-            }
+            await tableService.removePlayer(player.tableId, playerId);
         }
         
-        await deleteDoc(doc(db, 'tournaments', currentTournamentId, 'players', playerId));
+        await playerService.deletePlayer(playerId);
                 showToast(`${player.name} deleted successfully.`, 'success');
     } catch (error) {
         console.error('Error deleting player:', error);
