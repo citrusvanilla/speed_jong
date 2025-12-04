@@ -1799,12 +1799,9 @@ async function displayPlayerScoreEvents() {
     
     try {
         // Get fresh participant data
-        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
-        const participantDoc = await getDoc(participantRef);
+        const participantData = await roundService.getParticipantById(roundId, participantId);
         
-        if (!participantDoc.exists()) return;
-        
-        const participantData = participantDoc.data();
+        if (!participantData) return;
         const scoreEvents = participantData.scoreEvents || [];
         
         // Get round start time for display
@@ -1882,9 +1879,7 @@ window.addScoreEventToPlayer = async function(roundId, participantId) {
     
     try {
         // Get round data
-        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
-        const roundDoc = await getDoc(roundRef);
-        const roundData = roundDoc.data();
+        const roundData = await roundService.getById(roundId);
         const roundStartTime = roundData.startedAt ? roundData.startedAt.toDate() : null;
         const roundDurationMin = roundData.timerDuration || 30;
         
@@ -1894,9 +1889,7 @@ window.addScoreEventToPlayer = async function(roundId, participantId) {
         }
         
         // Get participant data
-        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
-        const participantDoc = await getDoc(participantRef);
-        const participantData = participantDoc.data();
+        const participantData = await roundService.getParticipantById(roundId, participantId);
         const playerName = participantData.name;
         
         // Prompt for score delta (+1 or -1)
@@ -1957,6 +1950,11 @@ window.addScoreEventToPlayer = async function(roundId, participantId) {
         
         const playerId = participantData.playerId;
         const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
+        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
+        
+        // Get current player data for lastWinAt
+        const currentPlayerData = await playerService.getById(playerId);
+        const currentLastWinAt = currentPlayerData.lastWinAt;
         
         // Update participant
         await updateDoc(participantRef, {
@@ -1969,7 +1967,7 @@ window.addScoreEventToPlayer = async function(roundId, participantId) {
         await updateDoc(playerRef, {
             wins: increment(delta),
             scoreEvents: arrayUnion(scoreEvent),
-            lastWinAt: delta > 0 ? newTimestamp : (await getDoc(playerRef)).data().lastWinAt
+            lastWinAt: delta > 0 ? newTimestamp : currentLastWinAt
         });
         
         showToast(`Score event added for ${playerName}!`, 'success');
@@ -1988,9 +1986,7 @@ window.deletePlayerScoreEvent = async function(roundId, participantId, eventInde
     if (!currentTournamentId) return;
     
     try {
-        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
-        const participantDoc = await getDoc(participantRef);
-        const participantData = participantDoc.data();
+        const participantData = await roundService.getParticipantById(roundId, participantId);
         const scoreEvents = participantData.scoreEvents || [];
         
         if (eventIndex >= scoreEvents.length) {
@@ -2030,9 +2026,7 @@ window.deletePlayerScoreEvent = async function(roundId, participantId, eventInde
         
         // Update player document
         const playerId = participantData.playerId;
-        const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
-        const playerDoc = await getDoc(playerRef);
-        const playerData = playerDoc.data();
+        const playerData = await playerService.getById(playerId);
         const playerScoreEvents = playerData.scoreEvents || [];
         
         // Remove matching event from player
@@ -5255,13 +5249,11 @@ window.viewRoundDetails = async function(roundId) {
     
     try {
         // Fetch round document
-        const roundDoc = await getDoc(doc(db, 'tournaments', currentTournamentId, 'rounds', roundId));
-        if (!roundDoc.exists()) {
+        const roundData = await roundService.getByIdOrNull(roundId);
+        if (!roundData) {
             showToast('Round not found!', 'error');
             return;
         }
-        
-        const roundData = roundDoc.data();
         const roundNumber = roundData.roundNumber;
         const startDate = formatFirebaseTimestamp(roundData.startedAt);
         const endDate = formatFirebaseTimestamp(roundData.endedAt);
@@ -5547,15 +5539,12 @@ window.editWinTimestamp = async function(roundId, participantId, winIndex) {
     
     try {
         // Get round data to get start time
-        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
-        const roundDoc = await getDoc(roundRef);
+        const roundData = await roundService.getByIdOrNull(roundId);
         
-        if (!roundDoc.exists()) {
+        if (!roundData) {
             showToast('Round not found!', 'error');
             return;
         }
-        
-        const roundData = roundDoc.data();
         const roundStartTime = roundData.startedAt ? roundData.startedAt.toDate() : null;
         
         if (!roundStartTime) {
@@ -5564,15 +5553,13 @@ window.editWinTimestamp = async function(roundId, participantId, winIndex) {
         }
         
         // Get participant data
-        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
-        const participantDoc = await getDoc(participantRef);
+        const participantData = await roundService.getParticipantById(roundId, participantId);
         
-        if (!participantDoc.exists()) {
+        if (!participantData) {
             showToast('Participant not found!', 'error');
             return;
         }
         
-        const participantData = participantDoc.data();
         const scoreEvents = participantData.scoreEvents || [];
         
         if (scoreEvents.length === 0) {
@@ -5641,11 +5628,9 @@ window.editWinTimestamp = async function(roundId, participantId, winIndex) {
         
         // Also update player document's scoreEvents
         const playerId = participantData.playerId;
-        const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
-        const playerDoc = await getDoc(playerRef);
+        const playerData = await playerService.getByIdOrNull(playerId);
         
-        if (playerDoc.exists()) {
-            const playerData = playerDoc.data();
+        if (playerData) {
             const playerScoreEvents = playerData.scoreEvents || [];
             
             if (playerScoreEvents.length > 0) {
@@ -5680,15 +5665,12 @@ window.deleteWinTimestamp = async function(roundId, participantId, eventIndex) {
     
     try {
         // Get participant data
-        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
-        const participantDoc = await getDoc(participantRef);
+        const participantData = await roundService.getParticipantById(roundId, participantId);
         
-        if (!participantDoc.exists()) {
+        if (!participantData) {
             showToast('Participant not found!', 'error');
             return;
         }
-        
-        const participantData = participantDoc.data();
         const scoreEvents = participantData.scoreEvents || [];
         
         if (scoreEvents.length === 0) {
@@ -5736,11 +5718,9 @@ window.deleteWinTimestamp = async function(roundId, participantId, eventIndex) {
         
         // Also update player document
         const playerId = participantData.playerId;
-        const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
-        const playerDoc = await getDoc(playerRef);
+        const playerData = await playerService.getByIdOrNull(playerId);
         
-        if (playerDoc.exists()) {
-            const playerData = playerDoc.data();
+        if (playerData) {
             const playerScoreEvents = playerData.scoreEvents || [];
             
             if (playerScoreEvents.length === 0) {
@@ -5789,15 +5769,12 @@ window.addWinToTable = async function(roundId, tableId) {
     
     try {
         // Get round data to get start time
-        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
-        const roundDoc = await getDoc(roundRef);
+        const roundData = await roundService.getByIdOrNull(roundId);
         
-        if (!roundDoc.exists()) {
+        if (!roundData) {
             showToast('Round not found!', 'error');
             return;
         }
-        
-        const roundData = roundDoc.data();
         const roundStartTime = roundData.startedAt ? roundData.startedAt.toDate() : null;
         
         if (!roundStartTime) {
@@ -5956,15 +5933,12 @@ window.redistributeTableScores = async function(roundId, tableId) {
     
     try {
         // Get round data
-        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
-        const roundDoc = await getDoc(roundRef);
+        const roundData = await roundService.getByIdOrNull(roundId);
         
-        if (!roundDoc.exists()) {
+        if (!roundData) {
             showToast('Round not found!', 'error');
             return;
         }
-        
-        const roundData = roundDoc.data();
         const roundStartTime = roundData.startedAt ? roundData.startedAt.toDate() : null;
         const roundDurationMin = roundData.timerDuration || 30;
         
@@ -6067,9 +6041,7 @@ window.redistributeTableScores = async function(roundId, tableId) {
             });
             
             // For player: remove old events from this participant, add new ones
-            const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
-            const playerDoc = await getDoc(playerRef);
-            const playerData = playerDoc.data();
+            const playerData = await playerService.getById(playerId);
             const oldPlayerScoreEvents = playerData.scoreEvents || [];
             
             // Remove old events by matching timestamps

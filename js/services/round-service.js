@@ -185,6 +185,28 @@ export class RoundService extends BaseService {
     }
     
     /**
+     * Get a specific participant from a round
+     * @param {string} roundId - The round ID
+     * @param {string} participantId - The participant ID (usually same as playerId)
+     * @returns {Promise<Object|null>} Participant data or null if not found
+     */
+    async getParticipantById(roundId, participantId) {
+        try {
+            const participantRef = this.firestore.doc(this.db, 'tournaments', this.tournamentId, 'rounds', roundId, 'participants', participantId);
+            const participantDoc = await this.firestore.getDoc(participantRef);
+            
+            if (!participantDoc.exists()) {
+                return null;
+            }
+            
+            return { id: participantDoc.id, ...participantDoc.data() };
+        } catch (error) {
+            console.error(`Error getting participant ${participantId} from round ${roundId}:`, error);
+            return null;
+        }
+    }
+    
+    /**
      * Get round participants
      * @param {string} roundId - Round ID
      * @returns {Promise<Array>} Array of participants

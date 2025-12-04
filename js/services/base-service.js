@@ -55,6 +55,27 @@ export class BaseService {
     }
     
     /**
+     * Get a single document by ID, return null if not found (no error)
+     * @param {string} docId - Document ID
+     * @returns {Promise<Object|null>} Document data with id, or null if not found
+     */
+    async getByIdOrNull(docId) {
+        try {
+            const docRef = doc(this.db, this.collectionPath, docId);
+            const docSnap = await getDoc(docRef);
+            
+            if (!docSnap.exists()) {
+                return null;
+            }
+            
+            return { id: docSnap.id, ...docSnap.data() };
+        } catch (error) {
+            console.error(`Error fetching document ${docId}:`, error);
+            return null;
+        }
+    }
+    
+    /**
      * Get all documents in collection
      * @returns {Promise<Array>} Array of documents with id
      */
