@@ -524,3 +524,4 @@ The codebase has grown organically to ~8k lines with most of it in a single file
 **Estimated total time for full refactor:** 20-25 hours
 **Estimated time for Phase 1-2 only:** 5-6 hours (80% of the benefit)
 
+

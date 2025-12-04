@@ -221,3 +221,4 @@ if __name__ == '__main__':
     tournament_id = sys.argv[1]
     debug_olivia_ranking(tournament_id)
 
+

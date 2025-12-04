@@ -222,3 +222,4 @@ export function formatScoreEventType(delta) {
     return delta > 0 ? 'Win' : 'Penalty';
 }
 
+

@@ -4654,13 +4654,6 @@ window.updateTournamentCode = async function(newValue, oldValue) {
         document.getElementById('tournamentCodeInput').value = oldValue;
     }
 };
-
-// Make functions globally accessible
-window.editPlayer = editPlayer;
-window.deletePlayer = deletePlayer;
-window.deleteTable = deleteTable;
-
-
 // ============================================================================
 // TABLE MAP FUNCTIONALITY (Simple HTML/CSS approach)
 // ============================================================================
