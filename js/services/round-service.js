@@ -234,6 +234,25 @@ export class RoundService extends BaseService {
     }
     
     /**
+     * Delete all participants for a round
+     * @param {string} roundId - The round ID
+     * @returns {Promise<void>}
+     */
+    async deleteAllParticipants(roundId) {
+        try {
+            const participants = await this.getParticipants(roundId);
+            const deletePromises = participants.map(p => {
+                const participantRef = this.firestore.doc(this.db, 'tournaments', this.tournamentId, 'rounds', roundId, 'participants', p.id);
+                return this.firestore.deleteDoc(participantRef);
+            });
+            await Promise.all(deletePromises);
+        } catch (error) {
+            console.error(`Error deleting participants for round ${roundId}:`, error);
+            throw error;
+        }
+    }
+    
+    /**
      * Get round participants
      * @param {string} roundId - Round ID
      * @returns {Promise<Array>} Array of participants

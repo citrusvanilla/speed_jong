@@ -2736,34 +2736,27 @@ deleteTournamentBtn.addEventListener('click', async () => {
             try {
                 showToast('Deleting tournament...', 'info');
                 
-        // Delete all subcollections first
-        
-        // Delete all players
-        const players = await playerService.getAll();
-        const deletePlayerPromises = playersSnap.docs.map(doc => deleteDoc(doc.ref));
-        await Promise.all(deletePlayerPromises);
-        
-        // Delete all tables
-        const tables = await tableService.getAll();
-        const deleteTablePromises = tablesSnap.docs.map(doc => deleteDoc(doc.ref));
-        await Promise.all(deleteTablePromises);
-        
-        // Delete all rounds (if any)
-        const rounds = await roundService.getAll();
-                for (const roundDoc of roundsSnap.docs) {
+                // Delete all subcollections first
+                
+                // Delete all players
+                const players = await playerService.getAll();
+                await Promise.all(players.map(p => playerService.delete(p.id)));
+                
+                // Delete all tables
+                const tables = await tableService.getAll();
+                await Promise.all(tables.map(t => tableService.delete(t.id)));
+                
+                // Delete all rounds (if any)
+                const rounds = await roundService.getAll();
+                for (const round of rounds) {
                     // Delete participants first
-                    const participants = await roundService.getParticipants(roundData.id);
-                    const deleteParticipantPromises = participants.map(p => 
-                        deleteDoc(doc(db, 'tournaments', currentTournamentId, 'rounds', roundData.id, 'participants', p.id))
-                    );
-                    await Promise.all(deleteParticipantPromises);
-                    
+                    await roundService.deleteAllParticipants(round.id);
                     // Then delete round
-                    await deleteDoc(roundDoc.ref);
+                    await roundService.delete(round.id);
                 }
-        
-        // Finally delete the tournament itself
-        await deleteDoc(doc(db, 'tournaments', currentTournamentId));
+                
+                // Finally delete the tournament itself
+                await tournamentService.delete(currentTournamentId);
         
                 showToast('Tournament deleted successfully!', 'success');
         
