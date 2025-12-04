@@ -182,7 +182,7 @@ async function buildRoundsMap(tournamentId) {
             };
             
             // Track the highest completed round number
-            if (roundData.status === 'completed' && roundData.roundNumber > lastCompletedRound) {
+            if (roundData.status === ROUND_STATUS.COMPLETED && roundData.roundNumber > lastCompletedRound) {
                 lastCompletedRound = roundData.roundNumber;
             }
         });
@@ -481,7 +481,7 @@ async function selectTournament(tournamentId) {
         await displayRoundInfo(window.currentTournamentData);
         
         // Update archive button text based on status
-        if (window.currentTournamentData.status === 'completed') {
+        if (window.currentTournamentData.status === TOURNAMENT_STATUS.COMPLETED) {
             archiveTournamentBtn.textContent = 'Reactivate';
             archiveTournamentBtn.classList.remove('btn-secondary');
             archiveTournamentBtn.classList.add('btn-success');
@@ -527,7 +527,7 @@ function displayTournamentInfo(data) {
     const totalRounds = data.totalRounds || 0;
     
     let typeSpecificHTML = '';
-    if (type === 'cutline') {
+    if (type === TOURNAMENT_TYPES.CUTLINE) {
         typeSpecificHTML = `
             <div class="info-item">
                 <div class="info-label">Tournament Type</div>
@@ -574,9 +574,9 @@ function displayTournamentInfo(data) {
             <div class="info-label">Status</div>
             <div class="info-value">
                 <select id="statusSelect" style="padding: 5px 10px; border-radius: 6px; border: 2px solid #e5e7eb; font-size: 14px; font-weight: 600;">
-                    <option value="staging" ${data.status === 'staging' ? 'selected' : ''}>Staging</option>
-                    <option value="active" ${data.status === 'active' ? 'selected' : ''}>Active</option>
-                    <option value="completed" ${data.status === 'completed' ? 'selected' : ''}>Completed</option>
+                    <option value="staging" ${data.status === TOURNAMENT_STATUS.STAGING ? 'selected' : ''}>Staging</option>
+                    <option value="active" ${data.status === TOURNAMENT_STATUS.ACTIVE ? 'selected' : ''}>Active</option>
+                    <option value="completed" ${data.status === TOURNAMENT_STATUS.COMPLETED ? 'selected' : ''}>Completed</option>
                 </select>
             </div>
         </div>
@@ -951,7 +951,7 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
     const type = document.getElementById('tournamentType').value;
     const timerDuration = parseInt(document.getElementById('tournamentTimer').value);
     const maxPlayers = parseInt(document.getElementById('tournamentMaxPlayers').value) || 0;
-    const totalRounds = type === 'cutline' ? parseInt(document.getElementById('tournamentRounds').value) : 0;
+    const totalRounds = type === TOURNAMENT_TYPES.CUTLINE ? parseInt(document.getElementById('tournamentRounds').value) : 0;
     
     if (!name) {
         showToast('Please enter a tournament name.', 'warning');
@@ -998,7 +998,7 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
             maxPlayers,
             totalRounds,
             tournamentCode,
-            status: 'staging',
+            status: ROUND_STATUS.STAGING,
             currentRound: 0,
             roundInProgress: false,
             createdAt: serverTimestamp()
@@ -1087,7 +1087,7 @@ function displayPlayers() {
         // - There are active rounds
         // - Tournament is not completed
         // - There are active players
-        if (type === 'cutline' && currentRound > 0 && status !== 'completed' && activePlayers.length > 0) {
+        if (type === TOURNAMENT_TYPES.CUTLINE && currentRound > 0 && status !== TOURNAMENT_STATUS.COMPLETED && activePlayers.length > 0) {
             eliminateBtn.style.display = 'inline-block';
         } else {
             eliminateBtn.style.display = 'none';
@@ -1328,11 +1328,11 @@ document.getElementById('eliminatePlayersBtn').addEventListener('click', async (
         for (const roundDoc of roundsSnap.docs) {
             const roundData = roundDoc.data();
             // Find the most recent completed round
-            if (roundData.status === 'completed' && roundData.roundNumber > lastCompletedRound) {
+            if (roundData.status === ROUND_STATUS.COMPLETED && roundData.roundNumber > lastCompletedRound) {
                 lastCompletedRound = roundData.roundNumber;
             }
             // Get participants from the last completed round for scoring
-            if (roundData.roundNumber === lastCompletedRound && roundData.status === 'completed') {
+            if (roundData.roundNumber === lastCompletedRound && roundData.status === ROUND_STATUS.COMPLETED) {
                 const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundDoc.id, 'participants'));
                 participantsSnap.forEach(pDoc => {
                     const pData = pDoc.data();
@@ -1416,8 +1416,8 @@ document.getElementById('eliminatePlayersBtn').addEventListener('click', async (
                 return a.roundScore - b.roundScore;
             })
             .map(group => {
-                const tournamentScoreText = group.tournamentScore > 0 ? `+${group.tournamentScore}` : group.tournamentScore;
-                const roundScoreText = group.roundScore > 0 ? `+${group.roundScore}` : group.roundScore;
+                const tournamentScoreText = formatScore(group.tournamentScore);
+                const roundScoreText = formatScore(group.roundScore);
                 return `
                     <div style="margin: 8px 0; padding: 8px; background: white; border-radius: 6px;">
                         <strong>${tournamentScoreText} pts (${roundScoreText} this round):</strong>
@@ -2222,7 +2222,7 @@ window.deletePlayerScoreEvent = async function(roundId, participantId, eventInde
         }
         
         const eventToDelete = scoreEvents[eventIndex];
-        const dateStr = new Date(eventToDelete.timestamp.toDate()).toLocaleString();
+        const dateStr = formatFirebaseTimestamp(eventToDelete.timestamp);
         const delta = eventToDelete.delta || 1;
         const deltaText = delta > 0 ? '+1' : '-1';
         
@@ -2399,7 +2399,7 @@ function displayTables() {
     tablesList.innerHTML = tables.map(table => {
         const isActive = table.active !== false;
         const playerCount = table.players ? table.players.length : 0;
-        const positions = ['East', 'South', 'West', 'North'];
+        const positions = POSITIONS;
         const seats = positions.map(position => {
             const playerId = table.positions?.[position];
             const playerName = playerId ? playersData[playerId]?.name || 'Unknown' : '';
@@ -2938,8 +2938,8 @@ archiveTournamentBtn.addEventListener('click', async () => {
     const tournamentDoc = await getDoc(doc(db, 'tournaments', currentTournamentId));
     const tournamentData = tournamentDoc.data();
     
-    const isCompleted = tournamentData.status === 'completed';
-    const newStatus = isCompleted ? 'active' : 'completed';
+    const isCompleted = tournamentData.status === TOURNAMENT_STATUS.COMPLETED;
+    const newStatus = isCompleted ? TOURNAMENT_STATUS.ACTIVE : TOURNAMENT_STATUS.COMPLETED;
     const action = isCompleted ? 'Reactivate' : 'Archive';
     
     showConfirmAction(
@@ -3105,7 +3105,7 @@ function startAdminTimer() {
                 }
                 
                 // Check if round ended
-                if (freshData.status === 'completed') {
+                if (freshData.status === ROUND_STATUS.COMPLETED) {
                     clearInterval(adminTimerInterval);
                     if (adminServerSyncInterval && typeof adminServerSyncInterval === 'function') {
                         adminServerSyncInterval(); // Unsubscribe
@@ -3146,7 +3146,7 @@ async function displayRoundInfo(data) {
     const totalRounds = data.totalRounds || 0;
     
     let typeInfoHTML = '';
-    if (type === 'cutline' && totalRounds > 0) {
+    if (type === TOURNAMENT_TYPES.CUTLINE && totalRounds > 0) {
         const activePlayers = Object.values(playersData).filter(p => !p.eliminated).length;
         const cutPerRound = Math.floor(activePlayers / totalRounds);
         typeInfoHTML = `
@@ -3279,7 +3279,7 @@ async function displayRoundInfo(data) {
         `;
         
         // Check if tournament is completed
-        const tournamentCompleted = data.status === 'completed';
+        const tournamentCompleted = data.status === TOURNAMENT_STATUS.COMPLETED;
         
         // Button visibility logic
         if (roundStatus === 'staging') {
@@ -3361,7 +3361,7 @@ async function loadRoundParticipants(roundNumber) {
         
         roundsSnap.forEach(doc => {
             const roundData = doc.data();
-            if (roundData.roundNumber === roundNumber && roundData.status === 'in_progress') {
+            if (roundData.roundNumber === roundNumber && roundData.status === ROUND_STATUS.IN_PROGRESS) {
                 currentRoundId = doc.id;
             }
         });
@@ -3476,10 +3476,10 @@ async function loadRoundsHistory() {
         rounds.sort((a, b) => a.roundNumber - b.roundNumber);
         
         const roundsHTML = rounds.map(round => {
-            const statusClass = round.status === 'in_progress' ? 'status-active' : round.status === 'staging' ? 'status-staging' : 'status-completed';
-            const statusText = round.status === 'in_progress' ? 'In Progress' : round.status === 'staging' ? 'Staging' : 'Completed';
-            const startDate = round.startedAt ? new Date(round.startedAt.toDate()).toLocaleString() : 'N/A';
-            const endDate = round.endedAt ? new Date(round.endedAt.toDate()).toLocaleString() : '-';
+            const statusClass = round.status === ROUND_STATUS.IN_PROGRESS ? 'status-active' : round.status === ROUND_STATUS.STAGING ? 'status-staging' : 'status-completed';
+            const statusText = round.status === ROUND_STATUS.IN_PROGRESS ? 'In Progress' : round.status === ROUND_STATUS.STAGING ? 'Staging' : 'Completed';
+            const startDate = formatFirebaseTimestamp(round.startedAt);
+            const endDate = round.endedAt ? formatFirebaseTimestamp(round.endedAt) : '-';
             
             const timerText = round.timerDuration ? `${round.timerDuration} min` : 'N/A';
             const multiplier = round.scoreMultiplier || 1;
@@ -3549,7 +3549,7 @@ window.restartSpecificRound = async function(roundNumber, roundId) {
         // Update specific round record to in progress
         const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
         await updateDoc(roundRef, {
-            status: 'in_progress',
+            status: ROUND_STATUS.IN_PROGRESS,
             endedAt: null
         });
         
@@ -3636,7 +3636,7 @@ moveToNextRoundBtn.addEventListener('click', async () => {
         const roundRef = doc(collection(db, 'tournaments', currentTournamentId, 'rounds'));
         await setDoc(roundRef, {
             roundNumber: nextRound,
-            status: 'staging',
+            status: ROUND_STATUS.STAGING,
             timerDuration: defaultTimer, // Store in minutes (use tournament default)
             scoreMultiplier: 1, // Default multiplier is 1x
             startedAt: null,
@@ -3774,7 +3774,7 @@ document.getElementById('confirmStartRoundBtn').addEventListener('click', async 
         
         // Update round to in_progress status
         await updateDoc(roundRef, {
-            status: 'in_progress',
+            status: ROUND_STATUS.IN_PROGRESS,
             startedAt: serverTimestamp()
         });
         
@@ -3946,7 +3946,7 @@ endRoundBtn.addEventListener('click', async () => {
         playersListHTML = '';
     }
     // Handle cut line logic
-    else if (type === 'cutline' && currentRound < totalRounds) {
+    else if (type === TOURNAMENT_TYPES.CUTLINE && currentRound < totalRounds) {
         const activePlayers = Object.values(playersData).filter(p => !p.eliminated);
         const allPlayers = Object.values(playersData); // Include eliminated to get original count
         
@@ -3956,7 +3956,7 @@ endRoundBtn.addEventListener('click', async () => {
             const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
             for (const roundDoc of roundsSnap.docs) {
                 const roundData = roundDoc.data();
-                if (roundData.roundNumber === currentRound && roundData.status === 'in_progress') {
+                if (roundData.roundNumber === currentRound && roundData.status === ROUND_STATUS.IN_PROGRESS) {
                     const participantsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds', roundDoc.id, 'participants'));
                     participantsSnap.forEach(pDoc => {
                         const pData = pDoc.data();
@@ -4048,8 +4048,8 @@ endRoundBtn.addEventListener('click', async () => {
                 <div style="background: #fee2e2; border: 1px solid #ef4444; border-radius: 8px; padding: 15px; max-height: 200px; overflow-y: auto;">
             `;
             sortedGroups.forEach(group => {
-                const tournamentScoreText = group.tournamentScore > 0 ? `+${group.tournamentScore}` : group.tournamentScore;
-                const roundScoreText = group.roundScore > 0 ? `+${group.roundScore}` : group.roundScore;
+                const tournamentScoreText = formatScore(group.tournamentScore);
+                const roundScoreText = formatScore(group.roundScore);
                 playersListHTML += `
                     <div style="margin-bottom: 10px;">
                         <strong>${tournamentScoreText} pts (${roundScoreText} this round):</strong><br>
@@ -4061,7 +4061,7 @@ endRoundBtn.addEventListener('click', async () => {
         }
     }
     // Final round of cut line tournament
-    else if (type === 'cutline' && currentRound === totalRounds) {
+    else if (type === TOURNAMENT_TYPES.CUTLINE && currentRound === totalRounds) {
         const activePlayers = Object.values(playersData).filter(p => !p.eliminated);
         playersToCut = []; // No cuts on final round
         summaryHTML = `
@@ -4083,7 +4083,7 @@ endRoundBtn.addEventListener('click', async () => {
     
     const isLastRound = totalRounds > 0 && currentRound >= totalRounds;
     
-    if (type === 'cutline' && !isLastRound) {
+    if (type === TOURNAMENT_TYPES.CUTLINE && !isLastRound) {
         endRoundOnlyBtn.style.display = 'inline-block';
         confirmEndRoundBtn.textContent = 'Complete & Setup Next Round';
     } else {
@@ -4127,7 +4127,7 @@ document.getElementById('endRoundOnlyBtn').addEventListener('click', async () =>
         const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
         for (const roundDoc of roundsSnap.docs) {
             const roundData = roundDoc.data();
-            if (roundData.roundNumber === currentRound && roundData.status === 'in_progress') {
+            if (roundData.roundNumber === currentRound && roundData.status === ROUND_STATUS.IN_PROGRESS) {
                 await updateDoc(roundDoc.ref, {
                     endedAt: serverTimestamp(),
                     status: 'completed'
@@ -4136,7 +4136,7 @@ document.getElementById('endRoundOnlyBtn').addEventListener('click', async () =>
         }
         
         // For cutline tournaments, reset tables but DON'T eliminate players
-        if (type === 'cutline') {
+        if (type === TOURNAMENT_TYPES.CUTLINE) {
             const batch = writeBatch(db);
             
             // Unassign all players from tables
@@ -4200,7 +4200,7 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
         const roundsSnap = await getDocs(collection(db, 'tournaments', currentTournamentId, 'rounds'));
         for (const roundDoc of roundsSnap.docs) {
             const roundData = roundDoc.data();
-            if (roundData.roundNumber === currentRound && roundData.status === 'in_progress') {
+            if (roundData.roundNumber === currentRound && roundData.status === ROUND_STATUS.IN_PROGRESS) {
                 await updateDoc(roundDoc.ref, {
                     endedAt: serverTimestamp(),
                     status: 'completed'
@@ -4209,7 +4209,7 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
         }
         
         // Cut line specific actions
-        if (type === 'cutline') {
+        if (type === TOURNAMENT_TYPES.CUTLINE) {
             // Use batch write for eliminations and unassignments
             const batch = writeBatch(db);
             
@@ -4282,7 +4282,7 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
                 if (activeTables.length >= tablesNeeded && remainingPlayers % 4 === 0) {
                     // Auto-assign using batch (using random algorithm)
                     const assignBatch = writeBatch(db);
-                    const positions = ['East', 'South', 'West', 'North'];
+                    const positions = POSITIONS;
                     
                     // Get remaining players and assign using random algorithm
                     const playersList = remainingPlayerDocs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -4324,7 +4324,7 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
                     const nextRoundRef = doc(collection(db, 'tournaments', currentTournamentId, 'rounds'));
                     await setDoc(nextRoundRef, {
                         roundNumber: currentRound + 1,
-                        status: 'staging',
+                        status: ROUND_STATUS.STAGING,
                         timerDuration: defaultTimer,
                         scoreMultiplier: 1, // Default multiplier is 1x
                         createdAt: serverTimestamp(),
@@ -4502,7 +4502,7 @@ document.getElementById('createPlayoffBtn').addEventListener('click', async () =
         confirmHtml += `<div style="margin: 10px 0; padding: 10px; background: #f3f4f6; border-radius: 6px; max-height: 200px; overflow-y: auto; font-size: 13px;">`;
         playoffPlayers.slice(0, 10).forEach((p, i) => {
             const score = calculateTournamentScore(p, roundsMap);
-            const scoreText = score > 0 ? `+${score}` : score;
+            const scoreText = formatScore(score);
             confirmHtml += `<div style="padding: 3px 0;">${i + 1}. ${p.name} (${scoreText} pts)</div>`;
         });
         if (playoffPlayers.length > 10) {
@@ -4525,7 +4525,7 @@ document.getElementById('createPlayoffBtn').addEventListener('click', async () =
                     const roundRef = doc(collection(db, 'tournaments', currentTournamentId, 'rounds'));
                     await setDoc(roundRef, {
                         roundNumber: playoffRoundNumber,
-                        status: 'staging',
+                        status: ROUND_STATUS.STAGING,
                         timerDuration: defaultTimer,
                         scoreMultiplier: 1, // Default multiplier is 1x
                         isPlayoff: true,
@@ -4591,7 +4591,7 @@ document.getElementById('autoAssignTablesBtn').addEventListener('click', async (
         // (Could be enhanced later to allow algorithm selection)
         const tableAssignments = assignPlayersByAlgorithm(activePlayers, 'random');
         const numTables = tableAssignments.length;
-        const positions = ['East', 'South', 'West', 'North'];
+        const positions = POSITIONS;
         
         // Get next table number
         const existingTables = Object.values(tablesData);
@@ -5514,8 +5514,8 @@ window.viewRoundDetails = async function(roundId) {
         
         const roundData = roundDoc.data();
         const roundNumber = roundData.roundNumber;
-        const startDate = roundData.startedAt ? new Date(roundData.startedAt.toDate()).toLocaleString() : 'N/A';
-        const endDate = roundData.endedAt ? new Date(roundData.endedAt.toDate()).toLocaleString() : 'N/A';
+        const startDate = formatFirebaseTimestamp(roundData.startedAt);
+        const endDate = formatFirebaseTimestamp(roundData.endedAt);
         const timerText = roundData.timerDuration ? `${roundData.timerDuration} minutes` : 'N/A';
         const isPlayoff = roundData.isPlayoff || false;
         const playoffBadge = isPlayoff ? '<span style="margin-left: 10px; background: #fbbf24; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">PLAYOFF</span>' : '';
@@ -5954,7 +5954,7 @@ window.deleteWinTimestamp = async function(roundId, participantId, eventIndex) {
         }
         
         const eventToDelete = scoreEvents[eventIndex];
-        const dateStr = new Date(eventToDelete.timestamp.toDate()).toLocaleString();
+        const dateStr = formatFirebaseTimestamp(eventToDelete.timestamp);
         const delta = eventToDelete.delta || 1;
         
         const deltaText = delta > 0 ? '+1' : delta < 0 ? '-1' : '0';
