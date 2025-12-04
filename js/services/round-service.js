@@ -253,6 +253,26 @@ export class RoundService extends BaseService {
     }
     
     /**
+     * Update a participant in a round
+     * @param {string} roundId - The round ID
+     * @param {string} participantId - The participant ID
+     * @param {Object} data - Data to update
+     * @returns {Promise<void>}
+     */
+    async updateParticipant(roundId, participantId, data) {
+        try {
+            const participantRef = this.firestore.doc(this.db, 'tournaments', this.tournamentId, 'rounds', roundId, 'participants', participantId);
+            await this.firestore.updateDoc(participantRef, {
+                ...data,
+                updatedAt: this.firestore.serverTimestamp()
+            });
+        } catch (error) {
+            console.error(`Error updating participant ${participantId} in round ${roundId}:`, error);
+            throw error;
+        }
+    }
+    
+    /**
      * Get round participants
      * @param {string} roundId - Round ID
      * @returns {Promise<Array>} Array of participants

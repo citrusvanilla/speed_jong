@@ -1942,22 +1942,20 @@ window.addScoreEventToPlayer = async function(roundId, participantId) {
         };
         
         const playerId = participantData.playerId;
-        const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
-        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
         
         // Get current player data for lastWinAt
         const currentPlayerData = await playerService.getById(playerId);
         const currentLastWinAt = currentPlayerData.lastWinAt;
         
         // Update participant
-        await updateDoc(participantRef, {
+        await roundService.updateParticipant(roundId, participantId, {
             wins: increment(delta),
             scoreEvents: arrayUnion(scoreEvent),
             lastWinAt: delta > 0 ? newTimestamp : participantData.lastWinAt
         });
         
         // Update player
-        await updateDoc(playerRef, {
+        await playerService.update(playerId, {
             wins: increment(delta),
             scoreEvents: arrayUnion(scoreEvent),
             lastWinAt: delta > 0 ? newTimestamp : currentLastWinAt
@@ -2015,7 +2013,7 @@ window.deletePlayerScoreEvent = async function(roundId, participantId, eventInde
             }
         }
         
-        await updateDoc(participantRef, participantUpdates);
+        await roundService.updateParticipant(roundId, participantId, participantUpdates);
         
         // Update player document
         const playerId = participantData.playerId;
@@ -2042,7 +2040,7 @@ window.deletePlayerScoreEvent = async function(roundId, participantId, eventInde
             }
         }
         
-        await updateDoc(playerRef, playerUpdates);
+        await playerService.update(playerId, playerUpdates);
         
         showToast('Score event deleted!', 'success');
         
@@ -2246,7 +2244,7 @@ window.toggleTableActiveFromList = async function(tableId) {
     }
     
         // Just toggle active state
-        await updateDoc(doc(db, 'tournaments', currentTournamentId, 'tables', tableId), {
+        await tableService.update(tableId, {
             active: newActiveState
         });
         showToast(`Table ${newActiveState ? 'activated' : 'deactivated'}.`, 'success');
@@ -3325,8 +3323,7 @@ window.editRoundMultiplier = async function(roundId, roundNumber, currentMultipl
     }
     
     try {
-        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId);
-        await updateDoc(roundRef, {
+        await roundService.updateRound(roundId, {
             scoreMultiplier: multiplierValue
         });
         
@@ -3553,8 +3550,7 @@ window.updateRoundTimer = async function(newValue, originalValue) {
     if (newDuration === originalValue) return; // No change
     
     try {
-        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', currentRoundData.id);
-        await updateDoc(roundRef, {
+        await roundService.updateRound(currentRoundData.id, {
             timerDuration: newDuration
         });
         
@@ -3585,8 +3581,7 @@ window.updateScoreMultiplier = async function(newValue, originalValue) {
     if (newMultiplier === originalValue) return; // No change
     
     try {
-        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', currentRoundData.id);
-        await updateDoc(roundRef, {
+        await roundService.updateRound(currentRoundData.id, {
             scoreMultiplier: newMultiplier
         });
         
@@ -3628,11 +3623,10 @@ document.getElementById('confirmAddTimeBtn').addEventListener('click', async () 
     document.getElementById('addTimeModal').classList.add('hidden');
     
     try {
-        const roundRef = doc(db, 'tournaments', currentTournamentId, 'rounds', currentRoundData.id);
         const currentDuration = currentRoundData.timerDuration || 0;
         const newDuration = currentDuration + addMinutes;
         
-        await updateDoc(roundRef, {
+        await roundService.updateRound(currentRoundData.id, {
             timerDuration: newDuration
         });
         
@@ -4046,7 +4040,7 @@ document.getElementById('confirmEndRoundBtn').addEventListener('click', async ()
                         isPlayoff: false
                     });
                     
-                    await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+                    await tournamentService.update(currentTournamentId, {
                         currentRound: currentRound + 1
                     });
                     
@@ -4147,7 +4141,7 @@ completeTournamentBtn.addEventListener('click', async () => {
         '<p style="margin-top: 10px; color: #6b7280;">This will mark the tournament as finished. You can reactivate it later if needed.</p>',
         async () => {
             try {
-                await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+                await tournamentService.update(currentTournamentId, {
                     status: 'completed'
                 });
                 
@@ -4166,7 +4160,7 @@ document.getElementById('endTournamentBtn').addEventListener('click', async () =
     document.getElementById('playoffOptionModal').classList.add('hidden');
     
     try {
-        await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+        await tournamentService.update(currentTournamentId, {
             status: 'completed'
         });
         
@@ -4263,7 +4257,7 @@ document.getElementById('createPlayoffBtn').addEventListener('click', async () =
                     }
                     
                     // Update tournament
-                    await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+                    await tournamentService.update(currentTournamentId, {
                         currentRound: playoffRoundNumber,
                         roundInProgress: false
                     });
@@ -4363,7 +4357,7 @@ window.updateMaxPlayers = async function(newValue, oldValue) {
     if (newMax === oldValue) return;
     
     try {
-        await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+        await tournamentService.update(currentTournamentId, {
             maxPlayers: newMax
         });
         showToast('Max players updated!', 'success');
@@ -4380,7 +4374,7 @@ window.updateTotalRounds = async function(newValue, oldValue) {
     if (newTotal === oldValue || newTotal < 2) return;
     
     try {
-        await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+        await tournamentService.update(currentTournamentId, {
             totalRounds: newTotal
         });
         showToast('Total rounds updated!', 'success');
@@ -4416,7 +4410,7 @@ window.updateTournamentCode = async function(newValue, oldValue) {
             return;
         }
         
-        await updateDoc(doc(db, 'tournaments', currentTournamentId), {
+        await tournamentService.update(currentTournamentId, {
             tournamentCode: validation.code
         });
         showToast(`Tournament code updated to: ${validation.code}`, 'success');
@@ -4703,7 +4697,7 @@ async function toggleTableActive(tableId) {
             await batch.commit();
         } else {
             // Just toggle active state
-            await updateDoc(doc(db, 'tournaments', currentTournamentId, 'tables', tableId), {
+            await tableService.update(tableId, {
                 active: newActiveState
             });
         }
@@ -4716,7 +4710,7 @@ async function toggleTableActive(tableId) {
 // Save table position to Firebase
 async function saveTablePosition(tableId, x, y) {
     try {
-        await updateDoc(doc(db, 'tournaments', currentTournamentId, 'tables', tableId), {
+        await tableService.update(tableId, {
             mapX: Math.round(x),
             mapY: Math.round(y)
         });
@@ -5580,7 +5574,7 @@ window.editWinTimestamp = async function(roundId, participantId, winIndex) {
             timestamp: newTimestamp
         };
         
-        await updateDoc(participantRef, {
+        await roundService.updateParticipant(roundId, participantId, {
             scoreEvents: updatedScoreEvents
         });
         
@@ -5600,7 +5594,7 @@ window.editWinTimestamp = async function(roundId, participantId, winIndex) {
                     return event;
                 });
                 
-                await updateDoc(playerRef, {
+                await playerService.update(playerId, {
                     scoreEvents: playerUpdatedScoreEvents
                 });
             }
@@ -5672,7 +5666,7 @@ window.deleteWinTimestamp = async function(roundId, participantId, eventIndex) {
             }
         }
         
-        await updateDoc(participantRef, participantUpdates);
+        await roundService.updateParticipant(roundId, participantId, participantUpdates);
         
         // Also update player document
         const playerId = participantData.playerId;
@@ -5683,7 +5677,7 @@ window.deleteWinTimestamp = async function(roundId, participantId, eventIndex) {
             
             if (playerScoreEvents.length === 0) {
                 // No scoreEvents on player - old data, just decrement wins
-                await updateDoc(playerRef, { wins: increment(-delta) });
+                await playerService.update(playerId, { wins: increment(-delta) });
             } else {
                 // Remove matching scoreEvent from player's array
                 const updatedPlayerScoreEvents = playerScoreEvents.filter(event => 
@@ -5706,7 +5700,7 @@ window.deleteWinTimestamp = async function(roundId, participantId, eventIndex) {
                     }
                 }
                 
-                await updateDoc(playerRef, playerUpdates);
+                await playerService.update(playerId, playerUpdates);
             }
         }
         
@@ -5836,9 +5830,8 @@ window.addWinToTable = async function(roundId, tableId) {
         const newDate = new Date(roundStartTime.getTime() + offsetMs);
         const newTimestamp = Timestamp.fromDate(newDate);
         
-        const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', selectedParticipant.id);
+        const participantId = selectedParticipant.id;
         const playerId = selectedParticipant.playerId;
-        const playerRef = doc(db, 'tournaments', currentTournamentId, 'players', playerId);
         
         // Create score event object for audit trail
         const scoreEvent = {
@@ -5859,7 +5852,7 @@ window.addWinToTable = async function(roundId, tableId) {
             participantUpdates.lastWinAt = newTimestamp;
         }
         
-        await updateDoc(participantRef, participantUpdates);
+        await roundService.updateParticipant(roundId, participantId, participantUpdates);
         
         // Update player document
         const playerUpdates = {
@@ -5871,7 +5864,7 @@ window.addWinToTable = async function(roundId, tableId) {
             playerUpdates.lastWinAt = newTimestamp;
         }
         
-        await updateDoc(playerRef, playerUpdates);
+        await playerService.update(playerId, playerUpdates);
         
         const actionText = delta > 0 ? 'added to' : 'subtracted from';
         showToast(`Score event ${actionText} ${selectedParticipant.name}!`, 'success');
@@ -5990,8 +5983,7 @@ window.redistributeTableScores = async function(roundId, tableId) {
             }));
             
             // Update participant
-            const participantRef = doc(db, 'tournaments', currentTournamentId, 'rounds', roundId, 'participants', participantId);
-            await updateDoc(participantRef, {
+            await roundService.updateParticipant(roundId, participantId, {
                 scoreEvents: newParticipantScoreEvents,
                 lastWinAt: newParticipantScoreEvents.filter(e => e.delta > 0).length > 0 
                     ? newParticipantScoreEvents.filter(e => e.delta > 0).sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis())[0].timestamp 
@@ -6017,7 +6009,7 @@ window.redistributeTableScores = async function(roundId, tableId) {
                 ? playerWins.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis())[0].timestamp 
                 : null;
             
-            await updateDoc(playerRef, {
+            await playerService.update(playerId, {
                 scoreEvents: updatedPlayerScoreEvents,
                 lastWinAt: playerLastWin
             });
