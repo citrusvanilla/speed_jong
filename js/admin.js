@@ -1003,7 +1003,7 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
             maxPlayers,
             totalRounds,
             tournamentCode,
-            status: ROUND_STATUS.STAGING,
+            status: TOURNAMENT_STATUS.STAGING,
             currentRound: 0,
             roundInProgress: false,
             createdAt: serverTimestamp()
@@ -1025,11 +1025,10 @@ document.getElementById('tournamentForm').addEventListener('submit', async (e) =
 function setupPlayersListener() {
     if (unsubscribePlayers) unsubscribePlayers();
     
-    const playersRef = collection(db, 'tournaments', currentTournamentId, 'players');
-    unsubscribePlayers = onSnapshot(playersRef, async (snapshot) => {
+    unsubscribePlayers = playerService.subscribeToPlayers(async (players) => {
         playersData = {};
-        snapshot.forEach((doc) => {
-            playersData[doc.id] = { id: doc.id, ...doc.data() };
+        players.forEach((player) => {
+            playersData[player.id] = player;
         });
         displayPlayers();
         
@@ -2324,11 +2323,10 @@ window.deletePlayer = async function(playerId) {
 function setupTablesListener() {
     if (unsubscribeTables) unsubscribeTables();
     
-    const tablesRef = collection(db, 'tournaments', currentTournamentId, 'tables');
-    unsubscribeTables = onSnapshot(tablesRef, (snapshot) => {
+    unsubscribeTables = tableService.subscribeToTables((tables) => {
         tablesData = {};
-        snapshot.forEach((doc) => {
-            tablesData[doc.id] = { id: doc.id, ...doc.data() };
+        tables.forEach((table) => {
+            tablesData[table.id] = table;
         });
         displayTables();
         displayPlayers(); // Refresh to show updated assignments
@@ -2340,8 +2338,7 @@ function setupTablesListener() {
 function setupRoundsListener() {
     if (unsubscribeRounds) unsubscribeRounds();
     
-    const roundsRef = collection(db, 'tournaments', currentTournamentId, 'rounds');
-    unsubscribeRounds = onSnapshot(roundsRef, async (snapshot) => {
+    unsubscribeRounds = roundService.subscribeToRounds(async (rounds) => {
         // When rounds change (especially multipliers), refresh player stats table
         // The displayPlayerStatsTable function will recalculate all scores with new multipliers
         if (Object.keys(playersData).length > 0) {
