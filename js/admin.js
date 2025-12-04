@@ -47,7 +47,7 @@ import {
 } from './utils/formatters.js';
 import {
     validatePlayerName,
-    validateTournamentCode,
+    validateTournamentCode as validateTournamentCodeValidator,
     validateMultiplier,
     validateTimerDuration
 } from './utils/validators.js';
@@ -61,6 +61,9 @@ import {
     ERROR_MESSAGES,
     SUCCESS_MESSAGES
 } from './config/constants.js';
+import { sortPlayersByRanking, assignPlayersByAlgorithm } from './utils/assignment-utils.js';
+import { generateTournamentCode, validateTournamentCode } from './utils/tournament-code-utils.js';
+import { buildRoundsMap, buildTablePlayersMapFromRound } from './utils/data-utils.js';
 
 // Firebase config
 const firebaseConfig = {
@@ -78,87 +81,6 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 // ============================================================================
-// ASSIGNMENT ALGORITHM UTILITIES
-// ============================================================================
-
-/**
- * Sort players by tournament ranking (for ranking-based algorithms)
- * Sorting criteria (best to worst):
- * 1. Most wins (descending)
- * 2. Most points (descending)
- * 3. Most recent win timestamp (descending)
- * 4. Name (alphabetically as tie-breaker)
- */
-function sortPlayersByRanking(players) {
-    return [...players].sort((a, b) => {
-        // 1. Wins (descending)
-        if (b.wins !== a.wins) return b.wins - a.wins;
-        
-        // 2. Points (descending)
-        if (b.points !== a.points) return b.points - a.points;
-        
-        // 3. Last win timestamp (descending - more recent wins first)
-        const aTime = a.lastWinAt ? (a.lastWinAt.seconds || 0) : 0;
-        const bTime = b.lastWinAt ? (b.lastWinAt.seconds || 0) : 0;
-        if (bTime !== aTime) return bTime - aTime;
-        
-        // 4. Name (alphabetically)
-        return a.name.localeCompare(b.name);
-    });
-}
-
-/**
- * Assign players to table groups based on selected algorithm
- * @param {Array} players - Array of player objects
- * @param {string} algorithm - 'random', 'ranking', or 'round_robin'
- * @returns {Array} Array of arrays, where each inner array is 4 players for one table
- */
-function assignPlayersByAlgorithm(players, algorithm) {
-    const numTables = Math.floor(players.length / 4);
-    const playersToAssign = players.slice(0, numTables * 4); // Only take players we can seat
-    
-    if (algorithm === 'random') {
-        // Algorithm 1: Random shuffle
-        const shuffled = [...playersToAssign].sort(() => Math.random() - 0.5);
-        const tables = [];
-        for (let i = 0; i < numTables; i++) {
-            tables.push(shuffled.slice(i * 4, (i + 1) * 4));
-        }
-        return tables;
-    }
-    
-    if (algorithm === 'ranking') {
-        // Algorithm 2: By ranking - top 4 in table 1, next 4 in table 2, etc.
-        const sorted = sortPlayersByRanking(playersToAssign);
-        const tables = [];
-        for (let i = 0; i < numTables; i++) {
-            tables.push(sorted.slice(i * 4, (i + 1) * 4));
-        }
-        return tables;
-    }
-    
-    if (algorithm === 'round_robin') {
-        // Algorithm 3: Round robin - distribute ranks evenly
-        // Rank 1,5,9,13 at table 1, rank 2,6,10,14 at table 2, etc.
-        const sorted = sortPlayersByRanking(playersToAssign);
-        const tables = Array.from({ length: numTables }, () => []);
-        sorted.forEach((player, i) => {
-            const tableIdx = i % numTables;
-            tables[tableIdx].push(player);
-        });
-        return tables;
-    }
-    
-    // Default to random
-    const shuffled = [...playersToAssign].sort(() => Math.random() - 0.5);
-    const tables = [];
-    for (let i = 0; i < numTables; i++) {
-        tables.push(shuffled.slice(i * 4, (i + 1) * 4));
-    }
-    return tables;
-}
-
-// ============================================================================
 // HELPER FUNCTIONS FOR SCORING SYSTEM
 // ============================================================================
 
@@ -167,86 +89,6 @@ function assignPlayersByAlgorithm(players, algorithm) {
  * @param {string} tournamentId
  * @returns {Object} Map of roundNumber to round data, plus lastCompletedRound
  */
-async function buildRoundsMap(tournamentId) {
-    const roundsMap = {};
-    let lastCompletedRound = 0;
-    
-    try {
-        const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
-        roundsSnap.forEach(doc => {
-            const roundData = doc.data();
-            roundsMap[roundData.roundNumber] = {
-                scoreMultiplier: roundData.scoreMultiplier || 1,
-                timerDuration: roundData.timerDuration,
-                status: roundData.status
-            };
-            
-            // Track the highest completed round number
-            if (roundData.status === ROUND_STATUS.COMPLETED && roundData.roundNumber > lastCompletedRound) {
-                lastCompletedRound = roundData.roundNumber;
-            }
-        });
-    } catch (error) {
-        console.error('Error building rounds map:', error);
-    }
-    
-    roundsMap._lastCompletedRound = lastCompletedRound;
-    return roundsMap;
-}
-
-/**
- * Build table players map from round participants (for historical table groupings)
- * @param {string} tournamentId
- * @param {number} roundNumber - Which round to get table groupings from
- * @returns {Object} Map of tableId to array of player objects (from that round)
- */
-async function buildTablePlayersMapFromRound(tournamentId, roundNumber) {
-    const tablePlayersMap = {};
-    
-    if (roundNumber <= 0) return tablePlayersMap;
-    
-    try {
-        // Find the round document for this round number
-        const roundsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'rounds'));
-        let targetRoundId = null;
-        
-        for (const roundDoc of roundsSnap.docs) {
-            const roundData = roundDoc.data();
-            if (roundData.roundNumber === roundNumber) {
-                targetRoundId = roundDoc.id;
-                break;
-            }
-        }
-        
-        if (!targetRoundId) return tablePlayersMap;
-        
-        // Get participants from that round (snapshot of player data at round start)
-        const participantsSnap = await getDocs(
-            collection(db, 'tournaments', tournamentId, 'rounds', targetRoundId, 'participants')
-        );
-        
-        // Build map of tableId to players who were at that table during this round
-        participantsSnap.forEach(doc => {
-            const participant = doc.data();
-            const tableId = participant.tableId || 'unassigned';
-            
-            if (!tablePlayersMap[tableId]) {
-                tablePlayersMap[tableId] = [];
-            }
-            
-            // Use the full player data (with scoreEvents) for calculations
-            const fullPlayer = playersData[participant.playerId];
-            if (fullPlayer) {
-                tablePlayersMap[tableId].push(fullPlayer);
-            }
-        });
-    } catch (error) {
-        console.error('Error building table players map from round:', error);
-    }
-    
-    return tablePlayersMap;
-}
-
 // ============================================================================
 // Toast Notification System
 // ============================================================================
@@ -895,57 +737,13 @@ document.getElementById('cancelTournamentBtn').addEventListener('click', () => {
 });
 
 // Generate a unique 4-character tournament code
-function generateTournamentCode() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; // All alphanumeric
-    let code = '';
-    for (let i = 0; i < 4; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-}
-
-// Check if tournament code already exists (case-insensitive)
+// Tournament code validation and uniqueness check moved to TournamentService
 async function isTournamentCodeUnique(tournamentCode, excludeTournamentId = null) {
-    const tournamentsSnap = await getDocs(collection(db, 'tournaments'));
-    const existingCodes = tournamentsSnap.docs
-        .filter(doc => doc.id !== excludeTournamentId) // Exclude current tournament when editing
-        .map(doc => doc.data().tournamentCode?.toUpperCase())
-        .filter(Boolean);
-    return !existingCodes.includes(tournamentCode.toUpperCase());
+    return await tournamentService.isTournamentCodeUnique(tournamentCode, excludeTournamentId);
 }
 
-// Generate unique tournament code
 async function generateUniqueTournamentCode() {
-    let tournamentCode;
-    let attempts = 0;
-    const maxAttempts = 20;
-    
-    do {
-        tournamentCode = generateTournamentCode();
-        attempts++;
-        if (attempts > maxAttempts) {
-            throw new Error('Failed to generate unique tournament code');
-        }
-    } while (!(await isTournamentCodeUnique(tournamentCode)));
-
-    return tournamentCode;
-}
-
-// Validate and sanitize tournament code
-function validateTournamentCode(code) {
-    const sanitized = code.trim().toUpperCase();
-    
-    // Must be exactly 4 characters
-    if (sanitized.length !== 4) {
-        return { valid: false, error: 'Tournament code must be exactly 4 characters' };
-    }
-    
-    // Must be alphanumeric only
-    if (!/^[A-Z0-9]{4}$/.test(sanitized)) {
-        return { valid: false, error: 'Tournament code must contain only letters and numbers' };
-    }
-    
-    return { valid: true, code: sanitized };
+    return await tournamentService.generateUniqueTournamentCode();
 }
 
 document.getElementById('tournamentForm').addEventListener('submit', async (e) => {
@@ -1101,7 +899,7 @@ function displayPlayers() {
 
 async function displayPlayerStatsTable(allPlayers) {
     // Build rounds map for score multipliers
-    const roundsMap = await buildRoundsMap(currentTournamentId);
+    const roundsMap = await buildRoundsMap(db, currentTournamentId);
     
     // Use last COMPLETED round for tie-breaking, not current round
     // If tournament is in Round 2 staging, we want Round 1 scores for tie-breaking
@@ -1109,7 +907,7 @@ async function displayPlayerStatsTable(allPlayers) {
     const currentRound = window.currentTournamentData?.currentRound || 0;
     
     // Build table players map FROM the last completed round (historical table groupings)
-    const tablePlayersMap = await buildTablePlayersMapFromRound(currentTournamentId, lastCompletedRound);
+    const tablePlayersMap = await buildTablePlayersMapFromRound(db, currentTournamentId, lastCompletedRound, playersData);
     
     // Sort players using leaderboard logic with LAST COMPLETED round for tie-breaking
     const sortedPlayers = sortPlayersForLeaderboard(allPlayers, lastCompletedRound, roundsMap, tablePlayersMap);
@@ -1357,8 +1155,8 @@ document.getElementById('eliminatePlayersBtn').addEventListener('click', async (
         const originalPlayerCount = allPlayers.length;
         
         // Build rounds map and table players map for scoring
-        const roundsMap = await buildRoundsMap(currentTournamentId);
-        const tablePlayersMap = await buildTablePlayersMapFromRound(currentTournamentId, lastCompletedRound);
+        const roundsMap = await buildRoundsMap(db, currentTournamentId);
+        const tablePlayersMap = await buildTablePlayersMapFromRound(db, currentTournamentId, lastCompletedRound, playersData);
         
         // Sort players for cutting (worst first) using new scoring algorithm
         const sortedPlayers = sortPlayersForCutLine(activePlayers, lastCompletedRound, roundsMap, tablePlayersMap);
@@ -3923,8 +3721,8 @@ endRoundBtn.addEventListener('click', async () => {
         const originalPlayerCount = allPlayers.length;
         
         // Build rounds map and table players map for scoring
-        const roundsMap = await buildRoundsMap(currentTournamentId);
-        const tablePlayersMap = await buildTablePlayersMapFromRound(currentTournamentId, currentRound);
+        const roundsMap = await buildRoundsMap(db, currentTournamentId);
+        const tablePlayersMap = await buildTablePlayersMapFromRound(db, currentTournamentId, currentRound, playersData);
         
         // Sort players for cutting (worst first) using new scoring algorithm
         const sortedPlayers = sortPlayersForCutLine(activePlayers, currentRound, roundsMap, tablePlayersMap);
@@ -4424,9 +4222,9 @@ document.getElementById('createPlayoffBtn').addEventListener('click', async () =
         const activePlayers = Object.values(playersData).filter(p => !p.eliminated);
         
         // Build rounds map and table players map for scoring
-        const roundsMap = await buildRoundsMap(currentTournamentId);
+        const roundsMap = await buildRoundsMap(db, currentTournamentId);
         const lastCompletedRound = roundsMap._lastCompletedRound || 0;
-        const tablePlayersMap = await buildTablePlayersMapFromRound(currentTournamentId, lastCompletedRound);
+        const tablePlayersMap = await buildTablePlayersMapFromRound(db, currentTournamentId, lastCompletedRound, playersData);
         
         // Sort players for ranking (best performers first) using new scoring system
         const sortedPlayers = sortPlayersForLeaderboard(activePlayers, lastCompletedRound, roundsMap, tablePlayersMap);
